@@ -34,20 +34,21 @@ def main():
     ap.add_argument("--owner", required=True)
     ap.add_argument("--folds", default="0")
     ap.add_argument("--out", default="build/train")
-    ap.add_argument("--epochs", type=int, default=12)
+    ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--bs", type=int, default=2)
     ap.add_argument("--accum", type=int, default=4)
-    ap.add_argument("--k", type=int, default=16)
+    ap.add_argument("--k", type=int, default=32)
     ap.add_argument("--k-eval", type=int, default=94)
-    ap.add_argument("--arch", default="coatnet_rmlp_2_rw_384.sw_in12k_ft_in1k")
-    ap.add_argument("--res", type=int, default=384)
+    ap.add_argument("--arch", default="convnext_small.fb_in22k_ft_in1k")
+    ap.add_argument("--res", type=int, default=224)
+    ap.add_argument("--labels", default="labels_v2_silence_policy.csv", help="label file in kaggle/corpus (copied as labels_consensus.csv)")
     ap.add_argument("--corpus-kernels", default="rsna-knee-corpus96-part0,rsna-knee-corpus96-part1,rsna-knee-corpus96-part2")
     a = ap.parse_args()
     for fold in [int(f) for f in a.folds.split(",")]:
         d = Path(a.out) / f"fold{fold}"
         d.mkdir(parents=True, exist_ok=True)
         shutil.copy2(HERE / "train_raptor96.py", d / "train_raptor96.py")
-        shutil.copy2(HERE / "labels_consensus.csv", d / "labels_consensus.csv")
+        shutil.copy2(HERE / a.labels, d / "labels_consensus.csv")
         (d / "launch.py").write_text(LAUNCHER.format(fold=fold, epochs=a.epochs, bs=a.bs, accum=a.accum, k=a.k, k_eval=a.k_eval, arch=a.arch, res=a.res))
         meta = {
             "id": f"{a.owner}/rsna-knee-raptor96-train-f{fold}", "title": f"RSNA Knee Raptor96 Train F{fold}",

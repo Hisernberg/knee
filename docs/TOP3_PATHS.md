@@ -109,3 +109,10 @@ The public evidence changes the priority order:
 Revised expectation if steps 1-3 land: a family at 0.947-0.950 solo, 0.950-0.954 blended with the public stack
 (rank ~10-40). Top-3 (0.956+) needs the distillation round and the anatomy crop to both pay; it is possible, not
 assured, and the OOF/gold gates decide it, not the public leaderboard.
+
+## Corpus96 build result (2026-09-22 21:50 UTC)
+
+All three CPU kernels completed: 1,469 + 1,469 + 1,469 = **4,407 studies, 0 incomplete, 0 slice decode failures**,
+mean 4.72 of 5 slots filled per study, 14-22 minutes per part. Outputs (`vols_partK.npy` (n,96,336,336) uint8,
+`masks_partK.npy`, `ids_partK.npy`, `meta_partK.json`) live in the kernel outputs
+`kragglenote2forwork/rsna-knee-corpus96-part0..2` and are mounted by `kaggle/corpus/build_train_kernels.py`.

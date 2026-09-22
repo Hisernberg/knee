@@ -241,12 +241,16 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     amp = device.type == "cuda"
     model = build_model(a.arch, not a.no_pretrained).to(device)
+    core = model
+    if device.type == "cuda" and torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)  # T4x2: one study per GPU at bs=2
+        print(f"DataParallel over {torch.cuda.device_count()} GPUs", flush=True)
     tl = DataLoader(StudyWindows(corpus, train_ids, labels, weights, a.k, a.res, True), batch_size=a.bs, shuffle=True,
                     num_workers=a.workers, drop_last=True, collate_fn=collate, persistent_workers=a.workers > 0)
     gl = DataLoader(StudyWindows(corpus, gold_ids, labels, weights, a.k_eval, a.res, False), batch_size=1, num_workers=a.workers, collate_fn=collate)
     ol = DataLoader(StudyWindows(corpus, oof_ids, labels, weights, a.k_eval, a.res, False), batch_size=1, num_workers=a.workers, collate_fn=collate)
-    head_params = [p for n_, p in model.named_parameters() if not n_.startswith("backbone.")]
-    opt = torch.optim.AdamW([{"params": model.backbone.parameters(), "lr": a.bb_lr}, {"params": head_params, "lr": a.head_lr}], weight_decay=a.wd)
+    head_params = [p for n_, p in core.named_parameters() if not n_.startswith("backbone.")]
+    opt = torch.optim.AdamW([{"params": core.backbone.parameters(), "lr": a.bb_lr}, {"params": head_params, "lr": a.head_lr}], weight_decay=a.wd)
     steps = max(1, len(tl) // a.accum) * a.epochs
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[a.bb_lr, a.head_lr], total_steps=steps, pct_start=0.1)
     scaler = torch.amp.GradScaler(enabled=amp)
@@ -276,7 +280,7 @@ def main():
         au, aucs = macro_auc(yg, pg)
         hist.append({"epoch": ep, "loss": tot / max(nb, 1), "gold_auc": au, "seconds": round(time.time() - t0)})
         print(f"ep{ep} loss {tot / max(nb, 1):.4f} | gold macro-AUC {au:.4f} (best {max(best, au):.4f}) | {time.time() - t0:.0f}s", flush=True)
-        state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        state = {k: v.detach().cpu().clone() for k, v in core.state_dict().items()}
         ck = {"model": state, "arch": a.arch, "res": a.res, "lab": LAB, "epoch": ep, "gold_auc": au, "aucs": aucs, "src": "corpus96"}
         if au > best:
             best = au
@@ -287,7 +291,7 @@ def main():
         (out / "history.json").write_text(json.dumps(hist, indent=1))
     # SWA over the top-k epochs by gold AUC
     avg = {k: sum(c["model"][k].float() for c in topk) / len(topk) if topk[0]["model"][k].is_floating_point() else topk[0]["model"][k] for k in topk[0]["model"]}
-    model.load_state_dict(avg)
+    core.load_state_dict(avg)
     pg, yg, _ = predict(model, gl, device, amp)
     au_swa, aucs_swa = macro_auc(yg, pg)
     torch.save({"model": avg, "arch": a.arch, "res": a.res, "lab": LAB, "epoch": [c["epoch"] for c in topk], "swa_over": [c["epoch"] for c in topk],

@@ -38,6 +38,7 @@ except Exception:  # when run as a flat Kaggle script, scale.py is inlined below
     detect_scale = None
 
 IN_H, IN_W = 512, 768
+WORKERS = 4
 SEED = 42
 
 
@@ -59,8 +60,9 @@ def read_gray(path: str) -> np.ndarray:
     return a.astype(np.uint8)
 
 
-def letterbox(img: np.ndarray, h: int = IN_H, w: int = IN_W, interp=cv2.INTER_AREA):
+def letterbox(img: np.ndarray, h: int | None = None, w: int | None = None, interp=cv2.INTER_AREA):
     """Resize keeping aspect ratio and pad to (h, w). Returns image and (scale, oy, ox)."""
+    h, w = h or IN_H, w or IN_W
     ih, iw = img.shape[:2]
     s = min(h / ih, w / iw)
     nh, nw = max(1, round(ih * s)), max(1, round(iw * s))
@@ -140,9 +142,12 @@ class SegDS(torch.utils.data.Dataset):
         return xt, torch.from_numpy(y).float()[None]
 
 
-def make_model():
+ENCODER = "resnet34"
+
+
+def make_model(weights: str | None = "imagenet"):
     import segmentation_models_pytorch as smp
-    return smp.Unet("resnet34", encoder_weights="imagenet", in_channels=3, classes=1)
+    return smp.Unet(ENCODER, encoder_weights=weights, in_channels=3, classes=1)
 
 
 def dice_loss(logits, y, eps=1.0):
@@ -162,9 +167,9 @@ def train_kind(data: Path, out: Path, kind: str, epochs: int, bs: int, dev: str)
     idx = np.random.RandomState(SEED).permutation(len(X))
     nval = max(20, len(X) // 12)
     va, tr = idx[:nval], idx[nval:]
-    dl = torch.utils.data.DataLoader(SegDS(X, Y, tr, True), batch_size=bs, shuffle=True, num_workers=4,
-                                     drop_last=True, pin_memory=True, persistent_workers=True)
-    dv = torch.utils.data.DataLoader(SegDS(X, Y, va, False), batch_size=bs, num_workers=2)
+    dl = torch.utils.data.DataLoader(SegDS(X, Y, tr, True), batch_size=bs, shuffle=True, num_workers=WORKERS,
+                                     drop_last=True, pin_memory=True, persistent_workers=WORKERS > 0)
+    dv = torch.utils.data.DataLoader(SegDS(X, Y, va, False), batch_size=bs, num_workers=min(2, WORKERS))
     model = make_model().to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=3e-4, total_steps=epochs * len(dl), pct_start=0.1)
@@ -213,7 +218,7 @@ def predict(model, g: np.ndarray, dev: str) -> np.ndarray:
 def infer_test(data: Path, out: Path, wdir: Path, dev: str) -> None:
     models = {}
     for k in ("apo", "fasc"):
-        m = make_model()
+        m = make_model(None)
         m.load_state_dict(torch.load(wdir / f"{k}.pt", map_location="cpu"))
         models[k] = m.to(dev).eval()
     pdir = out / "probs"
@@ -246,7 +251,14 @@ def main():
     ap.add_argument("--bs", type=int, default=8)
     ap.add_argument("--infer-only", action="store_true")
     ap.add_argument("--weights", default=None)
+    ap.add_argument("--encoder", default="resnet34")
+    ap.add_argument("--size", default="512x768", help="network input HxW")
+    ap.add_argument("--workers", type=int, default=4)
     a, _ = ap.parse_known_args()
+    global ENCODER, IN_H, IN_W, WORKERS
+    ENCODER = a.encoder
+    IN_H, IN_W = (int(v) for v in a.size.split("x"))
+    WORKERS = a.workers
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     data, out = Path(a.data), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

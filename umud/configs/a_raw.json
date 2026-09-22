@@ -1,0 +1,3 @@
+{"_doc": "Shot A: pure pipeline, no calibration, no smoothing.",
+ "pa_col": "pa_wmed", "mt_col": "mt_inner", "fl_col": "fl_wmed", "fl_geo_weight": 0.5,
+ "temporal_alpha": 0.0}

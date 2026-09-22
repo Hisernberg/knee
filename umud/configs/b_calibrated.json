@@ -1,0 +1,4 @@
+{"_doc": "Shot B: pipeline + global calibration + cine-loop smoothing (values filled after diagnosis).",
+ "pa_col": "pa_wmed", "mt_col": "mt_inner", "fl_col": "fl_wmed", "fl_geo_weight": 0.5,
+ "pa_scale": 1.0, "pa_offset": 0.0, "mt_scale": 1.0, "mt_offset": 0.0, "fl_scale": 1.0, "fl_trig_scale": 1.0,
+ "temporal_alpha": 0.6}

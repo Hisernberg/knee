@@ -13,15 +13,11 @@ report), variable multi-series DICOM input, offline notebook submission.
 
 | Deliverable | State |
 |---|---|
-| Training + inference pipeline (`src/kneemri`) | complete, 8 tests pass end-to-end on synthetic DICOM data (CPU) |
-| Report → weak-label tooling (rules + LLM teacher, fold-safe calibration) | complete; rule labeler measured at 0.781 macro AUC vs gold-58 on the real reports |
-| Kaggle notebook builder + 5-submission loop (`kaggle/`) | complete, dry-run tested locally |
-| `best_filament_unet.pth` (trained weights) | **not produced**: no GPU and Kaggle is unreachable from the build sandbox |
-| `submission.csv` on the leaderboard | **not submitted**: Kaggle API blocked (HTTP 403) from the sandbox |
-
-The checkpoint name `best_filament_unet.pth` is kept as requested (`TrainConfig.ckpt_name`); the model is a
-2.5D attention-MIL classifier, not a segmentation UNet, because the competition is study-level
-classification scored by AUC.
+| Account baseline | public LB **0.942 (rank 304)**: `rsna-knee-dinosaur-v5` v1 (fork of the public 0.943 *Speedy Raptors* stack + a weak ConvNeXt arm); v2-v5 crashed on the hidden set (fatal asserts added by the experimental *MAST* rewrite) |
+| Extended-Raptor submission notebook (`kaggle/ext/`) | **built and verified locally**: 0.943 anchor unchanged + two unused public Raptor views (v9 finespacing 0.932 solo, v4 widedense 0.927 solo) + five blend variants from one GPU run |
+| Kaggle run | **blocked until Saturday 2026-09-26 00:00 UTC**: the account's 30 h weekly GPU quota is exhausted (`kaggle kernels push` refused). Runbook: `docs/EXT_SUBMISSION_PLAN.md` section 5 |
+| Expected result | anchor 0.943; main variant 0.943-0.945 (rank ~90-150). Rank 1-3 (0.956+) is not reachable with public assets; see `docs/EXT_SUBMISSION_PLAN.md` |
+| Training + inference pipeline (`src/kneemri`) | complete, 8 tests pass end-to-end on synthetic DICOM data (CPU); no trained weights |
 
 ## Quick start
 

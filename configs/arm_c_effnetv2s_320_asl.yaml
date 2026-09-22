@@ -1,0 +1,33 @@
+# Arm C - EfficientNetV2-S, 5-slice context, asymmetric focal negatives (decorrelated family for the blend).
+cache_dir: work/cache_s320_c5_k24_n8
+train_csv: data/train.csv
+folds_csv: work/folds.csv
+out_dir: work/runs/arm_c_effnetv2s_320_asl
+ckpt_name: best_filament_unet.pth
+aux_labels_csv: work/report_labels/report_labels_fold{fold}.csv
+aux_weight: 0.3
+fold: 0
+seed: 3400
+epochs: 12
+batch_size: 2
+accum: 4
+lr_encoder: 2.0e-4
+lr_head: 5.0e-4
+weight_decay: 0.01
+ema_decay: 0.998
+amp_dtype: float16
+max_windows: 96
+series_dropout: 0.2
+smoothing: 0.0
+gamma_neg: 2.0
+num_workers: 6
+model:
+  backbone: tf_efficientnetv2_s.in21k_ft_in1k
+  pretrained: true
+  d_model: 256
+  gru_hidden: 128
+  use_gru: false
+  transformer_layers: 2
+  dropout: 0.25
+  drop_path: 0.1
+prep: {size: 320, ctx: 5, max_centers: 24, max_series: 8, fov_mm: null}

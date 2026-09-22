@@ -1,0 +1,14 @@
+# Smoke-test configuration (tiny encoder, CPU friendly). Not for real training.
+cache_dir: work/debug/cache
+train_csv: data/train.csv
+folds_csv: work/debug/folds.csv
+out_dir: work/debug/runs
+fold: 0
+epochs: 1
+batch_size: 2
+accum: 1
+num_workers: 0
+ema_decay: 0.0
+max_windows: 8
+model: {tiny: true, d_model: 32, gru_hidden: 16, n_heads: 4, transformer_layers: 1}
+prep: {size: 48, ctx: 3, max_centers: 4, max_series: 3}

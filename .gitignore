@@ -1,0 +1,29 @@
+# data / artifacts
+data/
+*.dcm
+*.npy
+*.npz
+*.pt
+*.pth
+!tests/fixtures/*.pth
+cache/
+work/
+runs/
+outputs/
+submission*.csv
+!tests/fixtures/sample_submission.csv
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+# notebooks
+.ipynb_checkpoints/
+# kaggle credentials must never be committed
+kaggle.json
+.kaggle/
+.env
+build/
+kaggle/submission_log.jsonl

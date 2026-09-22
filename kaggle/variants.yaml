@@ -1,0 +1,36 @@
+# Five submission variants for the daily loop. Checkpoint globs point at the attached weights dataset.
+# Upload trained checkpoints with:  kaggle datasets create -p work/upload  (see kaggle/README.md)
+owner: YOUR_KAGGLE_USERNAME
+kernel_prefix: rsna-knee-infer
+machine_shape: NvidiaTeslaT4
+weights_datasets:
+  - YOUR_KAGGLE_USERNAME/rsna-knee-kneemri-weights
+variants:
+  v1_arm_a_5fold:            # single family, 5 folds, prob-average, flip TTA  (safest control)
+    checkpoints: ["/kaggle/input/rsna-knee-kneemri-weights/arm_a_convnext_tiny_320/fold*/best_filament_unet.pth"]
+    blend: prob
+    tta_flip: true
+  v2_arm_a_b_rank:           # two families, rank-average
+    checkpoints: ["/kaggle/input/rsna-knee-kneemri-weights/arm_a_convnext_tiny_320/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_b_coatnet0_384/fold*/best_filament_unet.pth"]
+    blend: rank
+    tta_flip: true
+  v3_all_arms_rank:          # all four families, equal weights, rank-average
+    checkpoints: ["/kaggle/input/rsna-knee-kneemri-weights/arm_a_convnext_tiny_320/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_b_coatnet0_384/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_c_effnetv2s_320_asl/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_d_maxvit_tiny_384/fold*/best_filament_unet.pth"]
+    blend: rank
+    tta_flip: true
+  v4_all_arms_prob_notta:    # same members, prob-average, no TTA (fast, isolates the TTA/rank effect)
+    checkpoints: ["/kaggle/input/rsna-knee-kneemri-weights/arm_a_convnext_tiny_320/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_b_coatnet0_384/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_c_effnetv2s_320_asl/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_d_maxvit_tiny_384/fold*/best_filament_unet.pth"]
+    blend: prob
+    tta_flip: false
+  v5_best_two_weighted:      # best two families by OOF, weighted 0.6/0.4 (fill in from OOF blend search)
+    checkpoints: ["/kaggle/input/rsna-knee-kneemri-weights/arm_b_coatnet0_384/fold*/best_filament_unet.pth",
+                  "/kaggle/input/rsna-knee-kneemri-weights/arm_a_convnext_tiny_320/fold*/best_filament_unet.pth"]
+    blend: rank
+    tta_flip: true

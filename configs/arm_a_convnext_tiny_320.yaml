@@ -1,0 +1,37 @@
+# Arm A - ConvNeXt-Tiny 2.5D + BiGRU + finding-query attention. Reference arm (fastest to iterate).
+cache_dir: work/cache_s320_c3_k24_n8
+train_csv: data/train.csv
+folds_csv: work/folds.csv
+out_dir: work/runs/arm_a_convnext_tiny_320
+ckpt_name: best_filament_unet.pth
+aux_labels_csv: work/report_labels/report_labels_fold{fold}.csv   # fold-safe weak labels from reports (scripts/make_report_labels.py)
+aux_weight: 0.3
+fold: 0
+seed: 1400
+epochs: 10
+batch_size: 2
+accum: 4                       # effective 8 studies / step
+lr_encoder: 1.0e-4
+lr_head: 4.0e-4
+weight_decay: 0.02
+warmup_frac: 0.06
+ema_decay: 0.998
+grad_clip: 2.0
+amp_dtype: float16             # T4: fp16 (3x faster than bf16); A100/4090: bfloat16 is fine
+max_windows: 96
+series_dropout: 0.15
+smoothing: 0.02
+gamma_neg: 0.0
+num_workers: 6
+model:
+  backbone: convnext_tiny.fb_in22k_ft_in1k
+  pretrained: true
+  d_model: 256
+  gru_hidden: 128
+  use_gru: true
+  transformer_layers: 1
+  n_heads: 4
+  dropout: 0.2
+  drop_path: 0.1
+  grad_checkpoint: false
+prep: {size: 320, ctx: 3, max_centers: 24, max_series: 8, fov_mm: null}

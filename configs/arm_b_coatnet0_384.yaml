@@ -1,0 +1,33 @@
+# Arm B - CoAtNet-0 at 384px, fixed 160mm physical FOV (public 'Raptor'-style family, hybrid conv+attention).
+cache_dir: work/cache_s384_c3_k20_n8_f140
+train_csv: data/train.csv
+folds_csv: work/folds.csv
+out_dir: work/runs/arm_b_coatnet0_384
+ckpt_name: best_filament_unet.pth
+aux_labels_csv: work/report_labels/report_labels_fold{fold}.csv
+aux_weight: 0.3
+fold: 0
+seed: 2400
+epochs: 10
+batch_size: 1
+accum: 8
+lr_encoder: 8.0e-5
+lr_head: 4.0e-4
+weight_decay: 0.02
+ema_decay: 0.998
+amp_dtype: float16
+max_windows: 80
+series_dropout: 0.15
+smoothing: 0.02
+num_workers: 6
+model:
+  backbone: coatnet_0_rw_224.sw_in1k
+  pretrained: true
+  d_model: 256
+  gru_hidden: 128
+  use_gru: true
+  transformer_layers: 1
+  dropout: 0.2
+  drop_path: 0.15
+  grad_checkpoint: true
+prep: {size: 384, ctx: 3, max_centers: 20, max_series: 8, fov_mm: 140.0, lo_pct: 2.0, hi_pct: 98.0, span_lo: 0.15, span_hi: 0.85}

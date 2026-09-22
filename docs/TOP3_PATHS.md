@@ -87,3 +87,25 @@ trainer, different label file).
 
 Compute facts and prices above come from the cited Kaggle docs and vendor pages in the research notes
 (`docs/research/compute_feasibility.md`).
+
+## Update after the technique survey (2026-09-22, see docs/research/techniques.md)
+
+The public evidence changes the priority order:
+
+1. **Labels are the lever.** Every 0.947-0.958 single-model result in the "best single model" thread credits label
+   work, not encoder size (DINOv2-S -> B was +0.001, within noise). Measured here on gold-58: treating "not
+   addressed" as absent for ACL, MCL, Baker's and fracture and imputing silent synovitis from the effusion field
+   lifts the consensus table from 0.893 to **0.900** (fracture 0.815 -> 0.897). `kaggle/corpus/labels_v2_silence_policy.csv`
+   is that table with confidence weights; it is the default label file for training from now on.
+2. **Small models at 224-288 px are enough.** The #1 team uses the smallest ResNet (5-fold 0.947); a single-fold
+   CoAtNet at 224 reached 0.950. At 224 px with a random bag of 32 windows per study, one fold costs about 4 T4x2
+   hours, so **5 folds (~20 h) fit inside one week of Kaggle GPU quota** after Saturday's inference run. Path 2 is
+   therefore the primary free path; Path 1 (rented GPU) only buys speed and a second seed.
+3. **Then self-distillation.** Blend OOF predictions 0.5/0.5 with the report labels and retrain (lumbar-2024 2nd
+   place; "OOF pseudo-labels well correlated with LB" in this competition). Expected +0.003 to +0.008.
+4. Cheap extras with evidence: flip TTA (+0.001 to +0.003), 25 -> 50 epochs (+0.004 reported), a 90 mm meniscus
+   crop as a second view for the weak lateral columns (+0.002 to +0.005, speculative).
+
+Revised expectation if steps 1-3 land: a family at 0.947-0.950 solo, 0.950-0.954 blended with the public stack
+(rank ~10-40). Top-3 (0.956+) needs the distillation round and the anatomy crop to both pay; it is possible, not
+assured, and the OOF/gold gates decide it, not the public leaderboard.

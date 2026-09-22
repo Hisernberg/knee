@@ -1,0 +1,4 @@
+{"_doc": "Shot A2: pure pipeline calibrated on the host-recommended UMUD OSF expert benchmark (35 images, 7 raters): weighted-median fascicle FL x0.93 (bench FL MAE 8.5 -> 4.7 mm), PA +0.5 deg, MT +0.25 mm (bench biases). Cine-loop smoothing.",
+ "pa_col": "pa_wmed", "pa_offset": 0.5, "mt_col": "mt_inner", "mt_offset": 0.25,
+ "fl_col": "fl_wmed", "fl_scale": 0.93, "fl_geo_weight": 1.0,
+ "temporal_alpha": 0.6}

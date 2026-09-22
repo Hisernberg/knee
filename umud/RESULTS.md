@@ -38,3 +38,20 @@ the public score worse (0.370 → 0.407), so the anchors are not representative;
 - Declared external data is allowed, incl. the UMUD "Expert Analysed Benchmarks" (35 images, 7 raters, OSF) that
   the host recommends for calibration. LB-probed ensemble weights are not prize-eligible; hand-tuned ones are.
 - 670 exact duplicate fascicle image/mask pairs in train (remove one copy); test is independent of train.
+
+## External validation: UMUD OSF expert benchmark (osf.io/xbawc, 35 images, 7 raters)
+`scripts/osf_benchmark.py` runs the trained models + geometry with the benchmark's own px/cm scale and compares to
+the rater mean (entry errors > 50 % from the median dropped). MAE (competition-normalised):
+
+| Target | pipeline | DLTrack (host baseline) | one rater vs the others |
+|---|---|---|---|
+| MT | 0.50 mm (0.166) `mt_inner` | 1.03 mm | 0.24 mm |
+| PA | 1.06° (0.177) `pa_wmed` | 1.45° | 1.47° |
+| FL | 8.50 mm `fl_med` → **4.69 mm** with `fl_wmed × 0.93` | 3.74 mm | 4.78 mm |
+
+Biases: FL +5 mm (fascicle extrapolation too long), PA −0.5°, MT −0.25 mm → `configs/a2_osf_calibrated.json`.
+The benchmark comes from training-like devices (Telemed / Aloka / Philips HD11), not the test devices
+(Juniper / Lumify), so these numbers are optimistic for the test set.
+
+Prepared for the next quota day: `submissions/s06_A2_osf_calibrated.csv` (re-runnable) and
+`submissions/s07_C2_blend_osfFL.csv` (C with the calibrated FL component).

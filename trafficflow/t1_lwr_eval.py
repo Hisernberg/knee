@@ -57,6 +57,10 @@ def evaluate(panel: str, tag: str):
         variants[f"recon_a{a}"] = reconcile(pr["speed"], pr["flow"], pr["dens"], a)
         v, q = variants[f"recon_a{a}"]
         variants[f"recon_a{a}_darkonly"] = (np.where(dark, v, pr["speed"]), np.where(dark, q, pr["flow"]))
+    # the adopted post-processing (make_submission --gate 0.6): reconcile only in dense traffic
+    v, q = reconcile(pr["speed"], pr["flow"], pr["dens"], 0.25)
+    g = pr["speed"] < 0.6 * P.vf[ll]
+    variants["gate0.6"] = (np.where(g, v, pr["speed"]), np.where(g, q, pr["flow"]))
     res = {}
     for name, (v, q) in variants.items():
         S = d["tspeed"][:ntr].copy(); Q = d["tflow"][:ntr].copy()

@@ -89,6 +89,48 @@ def feat_panel(panel: str, seed: int = 0):
 
 
 NON_FEAT = {"panel", "t", "j", "kind", "day", "treg", "y_speed", "y_flow", "link_id", "y_dens"}
+USE_FD = os.environ.get("TFB_FD", "0") == "1"
+_FD_CACHE: dict = {}
+
+
+def fd_arrays(panel: str):
+    """Per-lane congested-branch parameters (w, k_jam) in milepost order (= column j)."""
+    if panel not in _FD_CACHE:
+        from .data import network
+        from .t1 import mileposts
+        net = network(panel)
+        o = np.argsort(mileposts(panel, net["links"]))
+        fd = net["fd"].iloc[o]
+        lanes = fd.lanes.to_numpy(float)
+        cap_l = fd.capacity_vph.to_numpy(float) / lanes
+        vf = fd.free_speed_kmh.to_numpy(float)
+        kj = fd.k_jam.to_numpy(float) / lanes
+        w = cap_l / np.maximum(kj - cap_l / np.maximum(vf, 1), 1e-3)
+        _FD_CACHE[panel] = (w.astype(np.float32), kj.astype(np.float32))
+    return _FD_CACHE[panel]
+
+
+def add_fd(d: pd.DataFrame) -> pd.DataFrame:
+    """Fundamental-diagram features computed from existing feature columns (same maths
+    as Panel.features with fd_features=True): congested-branch flow implied by speed,
+    speed implied by flow, and q/v density, for the interpolated / previous / next values."""
+    w = np.empty(len(d), np.float32); kj = np.empty(len(d), np.float32)
+    jj = d["j"].to_numpy()
+    for p, idx in d.groupby("panel").indices.items():
+        W, KJ = fd_arrays(p)
+        w[idx] = W[jj[idx]]; kj[idx] = KJ[jj[idx]]
+    vf = d["vf"].to_numpy(np.float32)
+    new = {"fd_w": w, "fd_kj": kj}
+    for src in ("li", "pv", "nv"):
+        v = d[f"{src}_speed"].to_numpy(np.float32); q = d[f"{src}_flow"].to_numpy(np.float32)
+        new[f"fd_qc_{src}"] = np.where(v < 0.9 * vf, v * (w * kj / (v + w)), np.nan).astype(np.float32)
+        new[f"fd_vc_{src}"] = (q / np.maximum(kj - q / w, 1e-2)).astype(np.float32)
+        new[f"fd_k_{src}"] = (q / np.maximum(v, 1)).astype(np.float32)
+    for dl in (-1, 1):
+        v = d[f"n{dl}_speed_0"].to_numpy(np.float32)
+        new[f"fd_qc_n{dl}"] = np.where(v < 0.9 * vf, v * w * kj / (v + w), np.nan).astype(np.float32)
+    new["v_over_vf_li"] = (d["li_speed"].to_numpy(np.float32) / vf).astype(np.float32)
+    return pd.concat([d, pd.DataFrame(new, index=d.index)], axis=1)
 
 
 CAP = {"reg": (int(os.environ.get("TFB_NREG", 150_000)), 100_000), "dark": (int(os.environ.get("TFB_NDARK", 150_000)), 60_000)}  # (train rows, holdout rows) per panel
@@ -111,6 +153,8 @@ def load_train(panels, kind, seed=0):
     d = pd.concat(dfs, ignore_index=True)
     d["panel_id"] = d.panel.map({p: i for i, p in enumerate(PANELS)}).astype("int16")
     d["y_dens"] = d.y_flow / np.maximum(d.y_speed, 1.0)
+    if USE_FD:
+        d = add_fd(d)
     return d
 
 
@@ -179,6 +223,8 @@ def predict(panels, tag: str):
     for p in panels:
         d = pd.read_parquet(WORK / "feat" / f"{p}_test.parquet")
         d["panel_id"] = np.int16(PANELS.index(p))
+        if USE_FD:
+            d = add_fd(d)
         feats = models["reg_speed"].feature_name()
         sp = np.empty(len(d)); fl = np.empty(len(d)); dn = np.empty(len(d))
         for kind in ("reg", "dark"):

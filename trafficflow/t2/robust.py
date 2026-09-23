@@ -33,6 +33,7 @@ TIME = ["tod", "dow"]
 EARLY = ["early_rmin", "early_qfrac", "early_nq"]
 VARIANTS = {
     "base": [],
+    "op": [],                        # onset: + location prior (oprior.py)
     "noloc": LOC,
     "noloc_notime": LOC + TIME,
     "dyn": LOC + ID + TIME,          # dynamics only

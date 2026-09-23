@@ -145,13 +145,16 @@ def train(panels, holdout: bool, tag: str, rounds: dict | None = None):
                               categorical_feature=["panel_id"], free_raw_data=True)
             p = dict(PARAMS)
             if c == "dens":
-                p.update(objective="huber", alpha=float(os.environ.get("TFB_HUBER", 1.0)))
+                p.update(objective="huber", alpha=float(os.environ.get("TFB_HUBER", 1.0)),
+                         num_leaves=int(os.environ.get("TFB_DENS_LEAVES", p["num_leaves"])))
             if kind == "dark":
-                p.update(num_leaves=63, min_data_in_leaf=200, learning_rate=0.05)
+                p.update(num_leaves=63, min_data_in_leaf=200,
+                         learning_rate=float(os.environ.get("TFB_DARK_LR", 0.05)))
             t0 = time.time()
             if holdout:
                 dva = lgb.Dataset(d.loc[va & ok, feats], y[va & ok], weight=None if w is None else w[va & ok], reference=dtr)
-                m = lgb.train(p, dtr, 3000, valid_sets=[dva], callbacks=[lgb.early_stopping(100, verbose=False),
+                m = lgb.train(p, dtr, int(os.environ.get("TFB_MAXR", 3000)), valid_sets=[dva],
+                              callbacks=[lgb.early_stopping(100, verbose=False),
                                                                         lgb.log_evaluation(250)])
                 pred = m.predict(d.loc[va, feats], num_iteration=m.best_iteration) + base_of(d[va], c)
                 rm = float(np.sqrt(np.nanmean((pred - d.loc[va, f"y_{c}"].to_numpy()) ** 2)))

@@ -48,6 +48,7 @@ ap.add_argument("--args", default="", help="extra CLI args appended to sys.argv 
 ap.add_argument("--mode", choices=["train", "submit"], default="train")
 ap.add_argument("--weights-kernel", default=None, help="<user>/<slug> of the training kernel (submit mode)")
 ap.add_argument("--config", default=str(ROOT / "configs" / "a_raw.json"))
+ap.add_argument("--cpu", action="store_true", help="no GPU (e.g. weekly quota used up)")
 a = ap.parse_args()
 
 scale = (ROOT / "umud" / "scale.py").read_text()
@@ -73,9 +74,9 @@ out.mkdir(parents=True, exist_ok=True)
 (out / "kernel.py").write_text(body)
 (out / "kernel-metadata.json").write_text(json.dumps({
     "id": f"{a.user}/{a.slug}", "title": a.slug, "code_file": "kernel.py", "language": "python",
-    "kernel_type": "script", "is_private": True, "enable_gpu": a.mode == "train", "enable_internet": True,
+    "kernel_type": "script", "is_private": True, "enable_gpu": a.mode == "train" and not a.cpu, "enable_internet": True,
     "competition_sources": ["umud-challenge-muscle-architecture-in-ultrasound-data"],
     "dataset_sources": [],
-    "kernel_sources": [a.weights_kernel] if a.mode == "submit" else [],
+    "kernel_sources": [a.weights_kernel] if a.weights_kernel else [],
 }, indent=1))
 print("wrote", out)

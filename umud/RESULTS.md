@@ -12,6 +12,7 @@ Metric: mean(MAE_PA/6, MAE_FL/12, MAE_MT/3), lower is better. Leaderboard at tim
 | s06 | A2: pipeline with OSF-benchmark calibration (`configs/a2_osf_calibrated.json`) | 0.52945 | **yes** |
 | s07 | C2: C with A2's calibrated FL | 0.37706 | no |
 | s08 | **C3**: C with per-target pipeline weights PA .45 / FL .3 / MT .6 (`--shot C3`) | **0.35157** (rank 8/293) | no |
+| s10 | **C5**: C3 with PA pipeline weight 0.6 (`scripts/blend_weights.py 0.6 0.3 0.6`) | **0.34947** | no |
 | s09 | C4: per-target weights PA .45 / FL .1 / MT .75 | 0.35513 | no |
 | s05 | D: C + Juniper right-tick length rescale (MT ×0.89, FL ×0.87, fitted to the 2 anchors) | 0.40742 | no |
 
@@ -68,3 +69,7 @@ Prepared for the next quota day: `submissions/s06_A2_osf_calibrated.csv` (re-run
 - Prize eligibility: C3 still depends on the hard-coded public Vera CSV. The host allows hand-tuned ensemble weights,
   but the ensemble member itself must be re-runnable. For a prize-eligible final, Vera has to be replaced by a
   second re-runnable model of similar quality.
+- C5 (PA pipeline weight 0.45 → 0.6) gains a further 0.0021, consistent with the OSF benchmark (pipeline PA 1.06° vs
+  DLTrack 1.45°; the Vera PA is DLTrack-lineage).
+- Weekly Kaggle GPU quota exhausted; `seg.py --init/--kinds/--lr` + `build_kernel.py --cpu --weights-kernel` fine-tune
+  the fascicle model on de-duplicated data (670 duplicate pairs removed) in a 12 h CPU kernel.

@@ -79,3 +79,26 @@ Where the headroom is:
 - physics: +0.1 S_phys is worth +0.015. The density model and blackout cells are the levers.
 - state: about +0.005 at most.
 - ODME: done.
+
+## Gated density reconciliation (2026-09-23)
+Per speed band, the L1 density error (D12_I5_S holdout) shows where the density model is better:
+
+| v/v_f | q/v | density model | FD(v) |
+|---|---|---|---|
+| < 0.4 | 2.99 | **1.50** | 1.77 |
+| 0.4–0.6 | 3.40 | 2.82 | **2.64** |
+| 0.6–0.8 | **4.83** | 5.10 | 5.50 |
+| 0.8–0.9 | **2.85** | 3.73 | 5.94 |
+
+The density model wins only in dense traffic, so reconciliation is gated to predicted v < 0.6·v_f.
+Full-coverage holdout, realistic blackouts:
+
+| Panel | J recon-all (A) | J gate 0.6 | Δ |
+|---|---|---|---|
+| D12_I5_S | 0.38307 | 0.38529 | +0.0022 |
+| D7_I10_W | 0.38704 | 0.38767 | +0.0006 |
+| D7_I405_S | 0.37741 | 0.37928 | +0.0019 |
+| D12_I405_N | 0.39010 | 0.39184 | +0.0017 |
+
+Gating improves J on 4/4 panels (mean +0.0016 total) and is adopted: `make_submission --gate 0.6`.
+Adding FD density in 0.4–0.6·v_f changes J by −0.0002 to +0.0005, which is noise, so it is not adopted.

@@ -7,6 +7,8 @@
 | s03 | 2026-09-22 | s03_fuse_ektarr.csv | s02 scores: keep >0.5, or 0.2–0.5 if a public ektarr instance agrees (IoU>0.3) | n/a (unvalidated) | 0.34 |
 | s04 | 2026-09-22 | s04_ens2_filt.csv | mean(r18 fold-0, r18 full-data) maps + filter thr 0.35 | n/a (full model has no OOF) | 0.34 |
 | s05 | 2026-09-22 | s05_ens2_filt050.csv | s04 with stricter filter thr 0.50 | 0.407 @1024 (thr 0.5 on f0) | 0.33 |
+| s06 | 2026-09-23 | s06_k18full.csv | r18 full-data **3000 steps** (Kaggle CPU kernel ch-unet-r18-full) + filter thr 0.35 | n/a (full data) | **0.35** |
+| s07 | 2026-09-23 | s07_ens3.csv | mean(r18 f0, r18 full 1100, r18 full 3000) + filter thr 0.35 | n/a | 0.34 |
 
 Takeaways from day 1:
 - The LB shows only 2 decimals.
@@ -15,3 +17,9 @@ Takeaways from day 1:
 - To move the LB we need larger OOF gains (≥ +0.02): more OOF folds for tuning, longer training, bigger encoders.
 
 Account history before cobalt-heron: 0.55 came from the public hdjojo/lamhuy payload (see ANALYSIS.md), and there was an unknown 0.33.
+
+Day 2:
+- Training longer (3000 vs 1100 steps) gives +0.01 on the LB.
+- Averaging with the weaker short-trained models hurts.
+- Next: long-trained models only (r34 2500, r18 folds at 3000+ steps).
+- Local long runs die when the container restarts while idle, so all training now runs on Kaggle CPU kernels.

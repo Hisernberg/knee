@@ -66,6 +66,7 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-23 13:47 | **P1** probe_odme_only | T4 only (state, queue zeroed) | 0.19876 | – | **S_ODME = 0.9938.** The Task 4 projection hypothesis holds; the most Task 4 can still add is 0.0012 total |
 | 2026-09-23 13:51 | **P2** probe_state_odme | A with queue zeroed | 0.62747 | – | A − P2 = 0.30·S_queue → **S_queue = 0.7486** (CV 0.795); P2 − P1 = 0.35·S_state + 0.15·S_phys = 0.42871 (local 0.432) → **S_phys ≈ 0.67–0.68** |
 | 2026-09-23 13:57 | **P3** probe_onset_zeroed | A with onset windows zeroed | 0.74919 | – | onset = 2·(A − P3)/0.30 = **0.686** (CV 0.713); ongoing = **0.812** (CV 0.877) → most of the Task 2 transfer loss is in ongoing windows |
+| 2026-09-23 16:23 | **B1** `B1_gate06_t2v4robust.zip` | A + density reconciliation gated to v<0.6·v_f; T2 lgb_v4_robust (ongoing = 50/50 blend of v3 and the no-location model; onset identical to v3) | **0.85732** | 14/146 overall, **8/116 post-rebuild** | +0.0053 vs A (local expectation +0.002 to +0.004: gating +0.0016, ongoing robustness +0.001 to +0.003). The Task 1/3 and Task 2 parts of the gain are not separated on the LB; post-rebuild top 0.88153 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |

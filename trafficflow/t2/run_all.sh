@@ -11,3 +11,7 @@ python -W ignore -m trafficflow.t2.cv queue_onset p1 --oprior       # final onse
 python -W ignore -m trafficflow.t2.cv queue_ongoing p2 --weighted   # final ongoing config, 4-fold CV (~35 min)
 python -W ignore -m trafficflow.t2.write_rules                      # persistence / persistence_fill / range_prior csvs
 python -W ignore -m trafficflow.t2.pipeline lgb_v3 --onset-cfg p1 --ongoing-cfg p2 --ongoing-weighted   # ~15 min
+# shift-robust variant (section 11 of TASK2_ANALYSIS.md)
+python -W ignore -m trafficflow.t2.robust cv noloc p2 --weighted     # CV of the no-location-prior ongoing model
+python -W ignore -c "from trafficflow.t2.robust_pipeline import train_variant; from trafficflow.t2.core import WORK; train_variant('noloc','p2',True).save_model(str(WORK/'model_rob_noloc_p2w_queue_ongoing.txt'))"
+python -W ignore -m trafficflow.t2.robust_pipeline lgb_v4_robust --onset-model lgb_v3 --ongoing lgb_v3:0.5 --ongoing rob_noloc_p2w:0.5

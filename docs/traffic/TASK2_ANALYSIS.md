@@ -262,3 +262,101 @@ are what let the model move to the currently active bottleneck.
   are the main error.
 * Recent-days features could use the whole previous month (for private, all
   of March validation) to track bottleneck shifts better.
+
+## 11. Public LB transfer (March) and shift-robust variant `lgb_v4_robust`
+
+**LB result for `lgb_v3.csv`** (Task 2 isolated by the coordinator's probe submissions,
+validation = March): S_queue 0.749 against 0.795 in CV. Onset scored 0.686
+(CV 0.713, -0.027) and ongoing 0.812 (CV 0.877, -0.065).
+
+### Diagnosis (data <= T only: histories, masked view, train profiles)
+
+`robust.recurrence` measures how recurrent a window's queue is. It averages
+the train time-of-day queue probability at T, for the same weekday and
+learned out of fold, over the links queued at the end of the history.
+
+* **The model itself rates the March ongoing windows as harder.** Its
+  expected-IoU surrogate (the decoder objective) averages 0.841 on validation
+  and 0.853 on private, against 0.882 on the CV windows, where the realised
+  IoU was 0.877. Validation is lowest on D12_I5_N (0.74) and D7_I10_W
+  (0.74). The surrogate explains about 0.04 of the 0.065 drop. The rest is
+  overconfidence on shifted windows.
+* **March has far more non-recurrent queues.** 12.5% of validation ongoing
+  windows have recurrence < 0.05, against 2.6% in train CV and 2.5% on
+  private. These are all 5 D7_I10_W windows: queues at links 24-26, the train
+  bottleneck, but at weekdays and times when train almost never queues there.
+  Validation also has more weekend windows (35% vs 24% in train) and fewer
+  large queues (90th percentile of queued links 38 vs 67). Large queues are
+  the easy ones: IoU 0.95 with >= 24 queued links.
+* **CV IoU by recurrence** (v3 ongoing model):
+
+  | recurrence | windows | IoU | model surrogate |
+  |---|---:|---:|---:|
+  | < 0.05 | 78 | 0.562 | 0.691 |
+  | 0.05-0.2 | 220 | 0.838 | 0.841 |
+  | >= 0.2 | 2,703 | 0.891 | 0.88-0.89 |
+
+  Reweighting these CV scores to the validation mix already predicts 0.847,
+  about -0.03 from composition alone. The model is overconfident exactly on
+  the non-recurrent windows. There the true queue grows from 9.4 to 16.1
+  links between T+5 and T+30, while the prediction grows only from 8.6 to
+  10.8. The time-of-day priors say "no queue here", which pulls growth down.
+  Rules do worse on these windows: fill-persistence 0.433, kinematic 0.442.
+* **"Shift-like" CV subset:** train CV windows with recurrence < 0.2 (298
+  windows) or < 0.05 (78). For onset, the proxy uses the truth, so it is for
+  evaluation only: the mean train profile at T+30 over the truly queued links
+  is < 0.2 (471 windows) or < 0.05 (143).
+
+### Variants (4-fold CV; ongoing windows; shift columns are plain means)
+
+| ongoing variant | sim | off | recur<0.05 | recur<0.2 |
+|---|---:|---:|---:|---:|
+| fast config (31 leaves, 250 rounds, window weights), all features | 0.853 | 0.877 | 0.522 | 0.731 |
+| fast, no location/time-of-day priors (`noloc`: drop pq_*, rq7_*) | 0.848 | 0.868 | 0.541 | 0.727 |
+| fast, dynamics only (also drop link identity, tod, weekday) | 0.829 | 0.844 | 0.539 | 0.707 |
+| fast, 50/50 blend all + noloc | 0.856 | 0.872 | 0.540 | 0.738 |
+| **v3**: p2 config (127 leaves, 600 rounds, weights), all features | 0.877 | 0.888 | 0.562 | 0.766 |
+| p2, noloc | 0.877 | 0.890 | 0.586 | 0.768 |
+| **v4**: 50/50 blend v3 + p2 noloc | **0.881** | 0.889 | **0.588** | **0.775** |
+| v4, noloc alone when recurrence < 0.05 | 0.881 | 0.889 | 0.586 | 0.775 |
+| v4, logit +0.5 when recurrence < 0.2 | 0.881 | 0.889 | 0.583 | 0.773 |
+| v3, logit +0.5 when recurrence < 0.2 | 0.878 | 0.889 | 0.572 | 0.771 |
+
+What each lever did:
+* Dropping only the location priors costs nothing at full capacity and helps
+  the non-recurrent windows.
+* Dropping the link identity as well hurts everywhere, including the shift
+  subset: which bottleneck a queue sits at still matters.
+* Blending the two models is the best option on every metric.
+* Gating and probability boosts add nothing on top of the blend.
+
+Onset variants on the onset shift subsets (sim / recur<0.05 / recur<0.2):
+* fast without prior: 0.692 / 0.240 / 0.512
+* fast + prior: 0.699 / 0.265 / 0.533
+* p2 + prior: 0.707 / 0.244 / 0.523
+* p2 + prior, weighted: 0.710 / 0.249 / 0.530
+* **v3 = p1 + prior: 0.713 / 0.275 / 0.543**
+
+The location prior helps on the non-recurrent onsets too, because it
+includes all-day and weekday-class variants. So onset stays as in v3.
+
+### Result
+
+`/home/user/work/t2/lgb_v4_robust.csv` (`robust_pipeline.py`):
+* **Onset:** the v3 model and decoder, unchanged. The file's onset rows are
+  identical to v3.
+* **Ongoing:** probability = 0.5 × v3 ongoing model + 0.5 × the no-location-prior
+  model (p2, weights). Top-m expected-IoU decoding as before.
+* **Coverage:** 174,000 rows, binary, all 160 windows non-empty, onset cells
+  only at T+30. Ongoing predictions agree with v3 at a mean window IoU of
+  0.948 (minimum 0.727).
+
+| | onset sim / off / shift<0.2 | ongoing sim / off / shift<0.2 / shift<0.05 | overall sim / off |
+|---|---|---|---|
+| lgb_v3 | 0.713 / 0.758 / 0.543 | 0.877 / 0.888 / 0.766 / 0.562 | 0.795 / 0.823 |
+| lgb_v4_robust | 0.713 / 0.758 / 0.543 | 0.881 / 0.889 / 0.775 / 0.588 | 0.797 / 0.823 |
+
+Expected effect on March: a small gain (the recur < 0.05 bucket is 12.5% of
+March ongoing windows, +0.026 there, +0.004 elsewhere). Most of the LB gap
+comes from the March window mix (small, non-recurrent queues) and is not
+recoverable by any variant tested here.

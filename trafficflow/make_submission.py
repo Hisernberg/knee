@@ -26,7 +26,7 @@ def state_frame(tag: str, a: float = 0.25) -> pd.DataFrame:
         v, q = reconcile(pr.speed.values, pr.flow_lane.values, pr.dens_lane.values, a)
     else:
         v, q = pr.speed.values, pr.flow_lane.values
-    pr["speed_kmh"] = np.clip(v, 3.0, 135.0)
+    pr["speed_kmh"] = np.clip(v, 3.0, 130.0)
     pr["flow_vph"] = np.clip(q * pr.lanes.values, 60.0, None)
     out = []
     for p in PANELS:

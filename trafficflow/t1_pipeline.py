@@ -182,9 +182,10 @@ def predict(panels, tag: str):
             m = (d.kind == kind).to_numpy()
             if m.any():
                 X = d.loc[m, feats]
-                sp[m] = models[f"{kind}_speed"].predict(X) + base_of(d[m], "speed")
-                fl[m] = models[f"{kind}_flow"].predict(X) + base_of(d[m], "flow")
-                dn[m] = models[f"{kind}_dens"].predict(X) + base_of(d[m], "dens")
+                nt = int(os.environ.get("TFB_PRED_THREADS", "1"))
+                sp[m] = models[f"{kind}_speed"].predict(X, num_threads=nt) + base_of(d[m], "speed")
+                fl[m] = models[f"{kind}_flow"].predict(X, num_threads=nt) + base_of(d[m], "flow")
+                dn[m] = models[f"{kind}_dens"].predict(X, num_threads=nt) + base_of(d[m], "dens")
         frames.append(pd.DataFrame({"panel": p, "t": d.t, "link_id": d.link_id, "regime": d.treg,
                                     "kind": d.kind, "speed": sp, "flow_lane": fl, "dens_lane": dn,
                                     "lanes": d.lanes}))
@@ -199,12 +200,13 @@ if __name__ == "__main__":
     ap.add_argument("--panels", nargs="*", default=PANELS)
     ap.add_argument("--tag", default="v1")
     ap.add_argument("--holdout", action="store_true")
+    ap.add_argument("--rounds", default="{}", help='JSON {"reg_speed": 950, ...} for full fits')
     a = ap.parse_args()
     if a.stage == "feat":
         for p in a.panels:
             feat_panel(p)
             gc.collect()
     elif a.stage == "train":
-        print(train(a.panels, a.holdout, a.tag))
+        print(train(a.panels, a.holdout, a.tag, json.loads(a.rounds)))
     elif a.stage == "predict":
         predict(a.panels, a.tag)

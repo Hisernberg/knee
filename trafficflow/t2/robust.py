@@ -171,9 +171,6 @@ def main():
         run_cv(a.variant, a.cfg, a.weighted, a.cond)
 
 
-if __name__ == "__main__":
-    main()
-
 
 def onset_recurrence() -> pd.Series:
     """Evaluation-only onset shift proxy (uses truth): mean train time-of-day
@@ -204,3 +201,7 @@ def onset_compare(files: list[str], thr=(0.05, 0.2)):
             x = s[s.recur < t]
             res[f"recur<{t}"] = round(float(x.iou.mean()), 4); res[f"n<{t}"] = len(x)
         print(f, res, flush=True)
+
+
+if __name__ == "__main__":
+    main()

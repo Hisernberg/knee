@@ -79,13 +79,21 @@ def unletterbox(p: np.ndarray, meta, ih: int, iw: int) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------- data
-def list_pairs(data: Path, kind: str):
+def list_pairs(data: Path, kind: str, dedupe: bool = True):
+    """Image/mask pairs; exact duplicate pairs (same image and mask bytes, see host topic 740356) kept once."""
+    import hashlib
     imgs = sorted(glob.glob(str(data / f"{kind}_imgs_v1" / "*" / "*.tif")))
-    out = []
+    out, seen = [], set()
     for p in imgs:
         m = p.replace(f"{kind}_imgs_v1", f"{kind}_masks_v1").replace(f"{kind}_images", f"{kind}_masks")
-        if os.path.exists(m):
-            out.append((p, m))
+        if not os.path.exists(m):
+            continue
+        if dedupe:
+            key = hashlib.md5(open(p, "rb").read()).hexdigest() + hashlib.md5(open(m, "rb").read()).hexdigest()
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append((p, m))
     return out
 
 
@@ -157,6 +165,10 @@ def dice_loss(logits, y, eps=1.0):
     return 1 - (num / den).mean()
 
 
+INIT_DIR = None
+LR = 3e-4
+
+
 def train_kind(data: Path, out: Path, kind: str, epochs: int, bs: int, dev: str) -> None:
     seed_all()
     pairs = list_pairs(data, kind)
@@ -170,9 +182,12 @@ def train_kind(data: Path, out: Path, kind: str, epochs: int, bs: int, dev: str)
     dl = torch.utils.data.DataLoader(SegDS(X, Y, tr, True), batch_size=bs, shuffle=True, num_workers=WORKERS,
                                      drop_last=True, pin_memory=True, persistent_workers=WORKERS > 0)
     dv = torch.utils.data.DataLoader(SegDS(X, Y, va, False), batch_size=bs, num_workers=min(2, WORKERS))
-    model = make_model().to(dev)
-    opt = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=3e-4, total_steps=epochs * len(dl), pct_start=0.1)
+    model = make_model(None if INIT_DIR else "imagenet")
+    if INIT_DIR:  # fine-tune from earlier weights
+        model.load_state_dict(torch.load(Path(INIT_DIR) / f"{kind}.pt", map_location="cpu"))
+    model = model.to(dev)
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=LR, total_steps=epochs * len(dl), pct_start=0.1)
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     pos_w = torch.tensor([3.0 if kind == "fasc" else 2.0], device=dev)
     best = -1.0
@@ -254,17 +269,26 @@ def main():
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--size", default="512x768", help="network input HxW")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--init", default=None, help="dir with apo.pt/fasc.pt to fine-tune from")
+    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--kinds", default="apo,fasc", help="which models to train")
     a, _ = ap.parse_known_args()
-    global ENCODER, IN_H, IN_W, WORKERS
+    global ENCODER, IN_H, IN_W, WORKERS, INIT_DIR, LR
     ENCODER = a.encoder
     IN_H, IN_W = (int(v) for v in a.size.split("x"))
     WORKERS = a.workers
+    INIT_DIR, LR = a.init, a.lr
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     data, out = Path(a.data), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     if not a.infer_only:
-        train_kind(data, out, "apo", a.epochs_apo, a.bs, dev)
-        train_kind(data, out, "fasc", a.epochs_fasc, a.bs, dev)
+        kinds = a.kinds.split(",")
+        for k in ("apo", "fasc"):
+            if k in kinds:
+                train_kind(data, out, k, a.epochs_apo if k == "apo" else a.epochs_fasc, a.bs, dev)
+            elif a.init:  # untouched model: carry the old weights over for inference
+                import shutil
+                shutil.copy(Path(a.init) / f"{k}.pt", out / f"{k}.pt")
     infer_test(data, out, Path(a.weights) if a.weights else out, dev)
 
 

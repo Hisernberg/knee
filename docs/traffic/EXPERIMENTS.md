@@ -103,3 +103,43 @@ Full-coverage holdout, realistic blackouts:
 
 Gating improves J on 4/4 panels (mean +0.0016 total) and is adopted: `make_submission --gate 0.6`.
 Adding FD density in 0.4–0.6·v_f changes J by −0.0002 to +0.0005, which is noise, so it is not adopted.
+
+## Task 1/3 v2 round (2026-09-23 evening)
+Full-coverage holdout, realistic blackouts, gate 0.6. J = 0.35·S_state + 0.10·S_LWR (the Task 1+3 part of S_total).
+
+| Panel | hold1 (submitted) | hold2 (all new) | + longer blackout speed/flow only | + L1-leaning density only |
+|---|---|---|---|---|
+| D12_I5_S | **0.38529** | 0.38422 | 0.38530 | 0.38419 |
+| D7_I10_W | **0.38767** | 0.38747 | 0.38753 | 0.38760 |
+| D7_I405_S | 0.37928 | 0.37900 | **0.37938** | 0.37890 |
+| D12_I405_N | 0.39184 | 0.39157 | **0.39195** | 0.39144 |
+
+- The L1-leaning density model (Huber α 0.2, 127 leaves) is worse on 4/4 panels, so it is **rejected**. The near-L2 density (α 1) is better for S_LWR.
+- Longer-trained blackout models: mean +0.00002 total, which is noise and not worth a retrain.
+
+**Speed/flow split inside the density gate.** LWR is unchanged, since q/v = k̂ for any a:
+
+| Panel | a = 0.25 (A, B1) | a = 0.75 | a = 1.0 |
+|---|---|---|---|
+| D12_I5_S | 0.93180 | **0.93429** | 0.93429 |
+| D7_I10_W | 0.93996 | 0.94091 | **0.94109** |
+| D7_I405_S | 0.91588 | **0.91845** | 0.91819 |
+| D12_I405_N | 0.94800 | **0.94934** | 0.94930 |
+
+a = 0.75 improves S_state on 4/4 panels (mean +0.0018, about +0.0006 total). In queues, flow sits near discharge capacity while speed carries the uncertainty. **Adopted** (`--recon-a 0.75 --gate 0.6`).
+
+## Task 2 v5 (2026-09-23 evening, agent)
+CV on sim / official windows. Details in docs/traffic/TASK2_ANALYSIS.md section 12.
+
+| Slice | v4 (in B1) | v5 |
+|---|---|---|
+| overall | 0.7971 / 0.8233 | **0.8022 / 0.8299** |
+| onset | 0.7133 | **0.7210** |
+| ongoing | 0.8809 | **0.8833** |
+| non-recurrent onset / ongoing (recur < 0.05) | 0.275 / 0.588 | **0.295 / 0.599** |
+
+## Candidates for 2026-09-24 (single-factor chain, each passes 65/65 checks)
+| File | Differs from | Change | Expected Δ |
+|---|---|---|---|
+| `C1_gate06_t2v5.zip` | B1 | Task 2 v4 → v5 (279 queue cells) | about +0.0015 (CV × 0.30), possibly more on March |
+| `C2_gate06a75_t2v5.zip` | C1 | gate split a 0.25 → 0.75 (266,914 dense-traffic state cells) | about +0.0006 |

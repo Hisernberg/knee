@@ -54,25 +54,36 @@ def feat_panel(panel: str, seed: int = 0):
     # all train holdout targets are kept for scoring
     ht, hl = np.nonzero((P.target[HOLD * SLOTS:ntr] > 0) & ~P.dark[HOLD * SLOTS:ntr, None])
     ht = ht + HOLD * SLOTS
+    s = rng.choice(len(ht), min(150_000, len(ht)), replace=False); ht, hl = ht[s], hl[s]
     keep = tt < HOLD * SLOTS
     tt, ll = np.concatenate([tt[keep], ht]), np.concatenate([ll[keep], hl])
-    reg = pd.concat([_meta(P, tt, ll, "reg"), P.features(tt, ll)], axis=1)
-    # dark cells in train (all eligible)
+    # dark cells in train (eligible), sampled
     dk = np.nonzero(P.dark[:ntr])[0]
     dt_, dl_ = np.nonzero(P.elig[dk]); dt_ = dk[dt_]
-    dark = pd.concat([_meta(P, dt_, dl_, "dark"), P.features(dt_, dl_)], axis=1)
-    pd.concat([reg, dark], ignore_index=True).to_parquet(out / f"{panel}_train.parquet")
-    del reg, dark; gc.collect()
+    s = rng.choice(len(dt_), min(400_000, len(dt_)), replace=False); dt_, dl_ = dt_[s], dl_[s]
+    kinds = np.array(["reg"] * len(tt) + ["dark"] * len(dt_))
+    tt, ll = np.concatenate([tt, dt_]), np.concatenate([ll, dl_])
+    parts = []
+    for i in range(0, len(tt), 200_000):
+        t2, l2 = tt[i:i + 200_000], ll[i:i + 200_000]
+        m = _meta(P, t2, l2, "reg"); m["kind"] = kinds[i:i + 200_000]
+        f = P.features(t2, l2)
+        f64 = f.select_dtypes("float64").columns; f[f64] = f[f64].astype(np.float32)
+        parts.append(pd.concat([m, f], axis=1))
+    pd.concat(parts, ignore_index=True).to_parquet(out / f"{panel}_train.parquet")
+    del parts; gc.collect()
     # test targets: validation + private
     a = SPLIT_DAYS["validation"][0] * SLOTS
     tt, ll = np.nonzero(P.target[a:] > 0); tt = tt + a
     parts = []
-    for i in range(0, len(tt), 400_000):
-        t2, l2 = tt[i:i + 400_000], ll[i:i + 400_000]
+    for i in range(0, len(tt), 200_000):
+        t2, l2 = tt[i:i + 200_000], ll[i:i + 200_000]
         m = _meta(P, t2, l2, "test")
         m["kind"] = np.where(P.dark[t2], "dark", "reg")
         m["link_id"] = P.links[l2]
-        parts.append(pd.concat([m, P.features(t2, l2)], axis=1))
+        f = P.features(t2, l2)
+        f64 = f.select_dtypes("float64").columns; f[f64] = f[f64].astype(np.float32)
+        parts.append(pd.concat([m, f], axis=1))
     pd.concat(parts, ignore_index=True).to_parquet(out / f"{panel}_test.parquet")
     print(f"{panel}: feat done in {time.time() - t0:.0f}s, origins={len(origins)}", flush=True)
 
@@ -80,12 +91,23 @@ def feat_panel(panel: str, seed: int = 0):
 NON_FEAT = {"panel", "t", "j", "kind", "day", "treg", "y_speed", "y_flow", "link_id", "y_dens"}
 
 
-def load_train(panels, kind):
+CAP = {"reg": (int(os.environ.get("TFB_NREG", 150_000)), 100_000), "dark": (int(os.environ.get("TFB_NDARK", 150_000)), 60_000)}  # (train rows, holdout rows) per panel
+
+
+def load_train(panels, kind, seed=0):
+    rng = np.random.default_rng(seed)
     dfs = []
     for p in panels:
         d = pd.read_parquet(WORK / "feat" / f"{p}_train.parquet")
         d = d[d.kind == kind]
+        tr = np.nonzero((d.day < HOLD).to_numpy())[0]; ho = np.nonzero((d.day >= HOLD).to_numpy())[0]
+        ctr, cho = CAP[kind]
+        tr = rng.choice(tr, min(ctr, len(tr)), replace=False); ho = rng.choice(ho, min(cho, len(ho)), replace=False)
+        d = d.iloc[np.sort(np.concatenate([tr, ho]))]
+        f64 = d.select_dtypes("float64").columns
+        d[f64] = d[f64].astype(np.float32)
         dfs.append(d)
+        del d; gc.collect()
     d = pd.concat(dfs, ignore_index=True)
     d["panel_id"] = d.panel.map({p: i for i, p in enumerate(PANELS)}).astype("int16")
     d["y_dens"] = d.y_flow / np.maximum(d.y_speed, 1.0)
@@ -98,8 +120,8 @@ def base_of(d, c):
     return d[f"li_{c}"].fillna(d[f"h_{c}"]).to_numpy()
 
 
-PARAMS = dict(objective="regression", learning_rate=0.06, num_leaves=255, min_data_in_leaf=100,
-              feature_fraction=0.6, bagging_fraction=0.8, bagging_freq=1, lambda_l2=2.0, max_bin=127,
+PARAMS = dict(objective="regression", learning_rate=float(os.environ.get("TFB_LR", 0.1)), num_leaves=255,
+              min_data_in_leaf=100, feature_fraction=0.5, bagging_fraction=0.7, bagging_freq=1, lambda_l2=2.0, max_bin=63,
               num_threads=int(os.environ.get("TFB_THREADS", "3")), verbose=-1)
 
 
@@ -113,6 +135,9 @@ def train(panels, holdout: bool, tag: str, rounds: dict | None = None):
         va = d.day >= HOLD
         for c in targets:
             name = f"{kind}_{c}"
+            if (mdir / f"{name}.txt").exists() and (not holdout or (mdir / f"hold_{name}.npy").exists()):
+                print("skip", name, flush=True)
+                continue
             y = d[f"y_{c}"].to_numpy() - base_of(d, c)
             ok = np.isfinite(y)
             w = (d.length * d.lanes).to_numpy() if c == "dens" else None
@@ -120,14 +145,14 @@ def train(panels, holdout: bool, tag: str, rounds: dict | None = None):
                               categorical_feature=["panel_id"], free_raw_data=True)
             p = dict(PARAMS)
             if c == "dens":
-                p.update(objective="l1")
+                p.update(objective="huber", alpha=float(os.environ.get("TFB_HUBER", 1.0)))
             if kind == "dark":
-                p.update(num_leaves=63, min_data_in_leaf=200, learning_rate=0.03)
+                p.update(num_leaves=63, min_data_in_leaf=200, learning_rate=0.05)
             t0 = time.time()
             if holdout:
                 dva = lgb.Dataset(d.loc[va & ok, feats], y[va & ok], weight=None if w is None else w[va & ok], reference=dtr)
-                m = lgb.train(p, dtr, 5000, valid_sets=[dva], callbacks=[lgb.early_stopping(150, verbose=False),
-                                                                        lgb.log_evaluation(500)])
+                m = lgb.train(p, dtr, 3000, valid_sets=[dva], callbacks=[lgb.early_stopping(100, verbose=False),
+                                                                        lgb.log_evaluation(250)])
                 pred = m.predict(d.loc[va, feats], num_iteration=m.best_iteration) + base_of(d[va], c)
                 rm = float(np.sqrt(np.nanmean((pred - d.loc[va, f"y_{c}"].to_numpy()) ** 2)))
                 report[name] = dict(best_iter=m.best_iteration, rmse=rm)

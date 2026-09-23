@@ -51,6 +51,11 @@ class Panel:
         self.length = fd.length_km.to_numpy(np.float32)
         self.vf = fd.free_speed_kmh.to_numpy(np.float32)
         self.cap = fd.capacity_vph.to_numpy(np.float32)
+        # per-lane triangular FD (the generator's own diagram, see docs/traffic/PLAN.md)
+        self.kj_l = (fd.k_jam.to_numpy(np.float32) / self.lanes)
+        self.kc_l = (self.cap / self.lanes) / np.maximum(self.vf, 1)
+        self.w = (self.cap / self.lanes) / np.maximum(self.kj_l - self.kc_l, 1e-3)
+        self.fd_features = False
         self.T, self.L = d["speed"].shape
         # observed channels (masked view). flow & occ per lane.
         self.X = {
@@ -220,6 +225,19 @@ class Panel:
         F["lanes"] = self.lanes[lj]; F["length"] = self.length[lj]
         F["vf"] = self.vf[lj]; F["cap_lane"] = self.cap[lj] / self.lanes[lj]
         F["mp_frac"] = (self.mp[lj] / max(self.mp.max(), 1e-6)).astype(np.float32)
+        if self.fd_features:
+            w, kj, vf = self.w[lj], self.kj_l[lj], self.vf[lj]
+            F["fd_w"] = w; F["fd_kj"] = kj
+            for src in ("li", "pv", "nv"):
+                v = F[f"{src}_speed"]; q = F[f"{src}_flow"]
+                kc = w * kj / (v + w)  # congested-branch density for this speed
+                F[f"fd_qc_{src}"] = np.where(v < 0.9 * vf, v * kc, np.nan).astype(np.float32)
+                F[f"fd_vc_{src}"] = (q / np.maximum(kj - q / w, 1e-2)).astype(np.float32)
+                F[f"fd_k_{src}"] = (q / np.maximum(v, 1)).astype(np.float32)
+            for dl in (-1, 1):
+                v = F[f"n{dl}_speed_0"]
+                F[f"fd_qc_n{dl}"] = np.where(v < 0.9 * vf, v * w * kj / (v + w), np.nan).astype(np.float32)
+            F["v_over_vf_li"] = (F["li_speed"] / vf).astype(np.float32)
         F["regime"] = self.regime_day[ti // SLOTS].astype(np.float32)
         F["dark_pos"] = self.dark_pos[ti].astype(np.float32)
         F["dark_rem"] = self.dark_rem[ti].astype(np.float32)

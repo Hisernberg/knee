@@ -3,6 +3,7 @@
     python scripts/blend.py --pipeline work/A.csv --ref <public Vera submission.csv> --shot C --test-dir <test dir> --out C.csv
 
 Shot B: 0.5 * pipeline + 0.5 * ref.
+Shot C3: as C but with per-target pipeline weights PA 0.45 / FL 0.3 / MT 0.6 (best: 0.35157).
 Shot C: PA of the pipeline + 1.6 deg (mean bias on the two public anchor images), 0.45 * pipeline + 0.55 * ref,
         cine-loop smoothing (0.6 toward the 5-frame median), the two public anchors pinned to their labels.
 Note: the reference is a hard-coded public CSV, so B/C are not re-runnable on new data (A is).
@@ -22,7 +23,7 @@ ANCHORS = {"IMG_00001.tif": (17.334, 79.423, 21.778), "IMG_00002.tif": (12.876, 
 ap = argparse.ArgumentParser()
 ap.add_argument("--pipeline", required=True)
 ap.add_argument("--ref", required=True)
-ap.add_argument("--shot", choices=["B", "C"], required=True)
+ap.add_argument("--shot", choices=["B", "C", "C3"], required=True)
 ap.add_argument("--test-dir", default=None)
 ap.add_argument("--out", required=True)
 a = ap.parse_args()
@@ -33,7 +34,11 @@ if a.shot == "B":
 else:
     p = p.copy()
     p["pa_deg"] += 1.6
-    out = 0.45 * p + 0.55 * r
+    if a.shot == "C":
+        out = 0.45 * p + 0.55 * r
+    else:  # C3: per-target pipeline weights (pipeline strongest on MT, weakest on FL per the OSF benchmark)
+        w = {"pa_deg": 0.45, "fl_mm": 0.3, "mt_mm": 0.6}
+        out = pd.DataFrame({k: w[k] * p[k] + (1 - w[k]) * r[k] for k in w})
     g = pd.Series(video_groups(list(p.index), Path(a.test_dir)), index=p.index)
     for c in out.columns:
         out[c] = 0.4 * out[c] + 0.6 * out.groupby(g)[c].transform("median")

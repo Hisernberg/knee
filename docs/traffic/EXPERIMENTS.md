@@ -56,3 +56,10 @@ The L2 projection of the split prior onto the split counts reproduces the publis
 | **total** | | **≈ 0.857–0.869** |
 
 That compares with the best post-rebuild public score of 0.879. Our previous best was 0.80855.
+
+## Leaderboard log (public = validation month, March 2031)
+
+| Date (UTC) | Submission | Contents | Public | Rank | Note |
+|---|---|---|---|---|---|
+| 2026-09-22 | earlier account subs (v1–v5) | various, not from this pipeline | best 0.80855 | 38th/108 post-rebuild | baseline for comparison |
+| 2026-09-23 13:42 | **A** `A_full_t1full1r25_t2lgbv3_t4l2proj.zip` | T1 pooled LGB full1 + density recon a=0.25; T2 lgb_v3; T4 L2 projection | **0.85204** | 21/145 overall, **13/115 post-rebuild** | +0.043 over previous best; about 0.005–0.017 below the local estimate (0.857–0.869); post-rebuild top 0.88153 |

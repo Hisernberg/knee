@@ -73,3 +73,9 @@ Prepared for the next quota day: `submissions/s06_A2_osf_calibrated.csv` (re-run
   DLTrack 1.45°; the Vera PA is DLTrack-lineage).
 - Weekly Kaggle GPU quota exhausted; `seg.py --init/--kinds/--lr` + `build_kernel.py --cpu --weights-kernel` fine-tune
   the fascicle model on de-duplicated data (670 duplicate pairs removed) in a 12 h CPU kernel.
+
+## Fascicle fine-tune on de-duplicated data (local CPU, 3 epochs, lr 1e-4)
+Kaggle GPU quota and CPU session slots were exhausted, so this ran locally from the GPU weights.
+Validation Dice 0.303 → 0.333 (the old validation split shared duplicates with training).
+OSF benchmark: PA `pa_wmed` 1.06° → 1.02°, FL `fl_med` 8.50 → 8.10 mm, `fl_top5` 6.73 → 6.37 mm, MT unchanged.
+Prepared: `submissions/s11_Aft_pipeline.csv` (re-runnable) and `submissions/s12_C5ft.csv` (C5 weights on A_ft).

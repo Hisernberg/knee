@@ -55,16 +55,20 @@ if __name__ == "__main__":
     ap.add_argument("--odme")
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", choices=["state", "queue", "odme"])
+    ap.add_argument("--zero", nargs="*", default=[], choices=["state", "queue", "odme"],
+                    help="zero these tasks (a zeroed task scores exactly 0 on the leaderboard)")
     ap.add_argument("--note", default="")
+    ap.add_argument("--force", action="store_true", help="write even if checks fail (deliberate probes only)")
     a = ap.parse_args()
     st = state_frame(a.state_tag, a.recon_a)
     q = queue_frame(a.queue)
     o = odme_frame(a.odme)
-    force = False
-    if a.only and a.only != "state":
+    force = a.force
+    zero = set(a.zero) | ({"state", "queue", "odme"} - {a.only} if a.only else set())
+    if "state" in zero:
         st = st.assign(speed_kmh=0.0, flow_vph=0.0); force = True
-    if a.only and a.only != "queue":
+    if "queue" in zero:
         q = q.assign(queue_pred=0); force = True
-    if a.only and a.only != "odme":
+    if "odme" in zero:
         o = o.assign(path_flow=0.0); force = True
     assemble(st, q, o, Path(a.out), force=force, note=a.note)

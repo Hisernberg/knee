@@ -63,3 +63,19 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 |---|---|---|---|---|---|
 | 2026-09-22 | earlier account subs (v1–v5) | various, not from this pipeline | best 0.80855 | 38th/108 post-rebuild | baseline for comparison |
 | 2026-09-23 13:42 | **A** `A_full_t1full1r25_t2lgbv3_t4l2proj.zip` | T1 pooled LGB full1 + density recon a=0.25; T2 lgb_v3; T4 L2 projection | **0.85204** | 21/145 overall, **13/115 post-rebuild** | +0.043 over previous best; about 0.005–0.017 below the local estimate (0.857–0.869); post-rebuild top 0.88153 |
+| 2026-09-23 13:47 | **P1** probe_odme_only | T4 only (state, queue zeroed) | 0.19876 | – | **S_ODME = 0.9938.** The Task 4 projection hypothesis holds; the most Task 4 can still add is 0.0012 total |
+| 2026-09-23 13:51 | **P2** probe_state_odme | A with queue zeroed | 0.62747 | – | A − P2 = 0.30·S_queue → **S_queue = 0.7486** (CV 0.795); P2 − P1 = 0.35·S_state + 0.15·S_phys = 0.42871 (local 0.432) → **S_phys ≈ 0.67–0.68** |
+| 2026-09-23 13:57 | **P3** probe_onset_zeroed | A with onset windows zeroed | 0.74919 | – | onset = 2·(A − P3)/0.30 = **0.686** (CV 0.713); ongoing = **0.812** (CV 0.877) → most of the Task 2 transfer loss is in ongoing windows |
+
+### Decomposition of A (0.85204), exact from the probes
+| Task | Weighted | Task score | Local estimate |
+|---|---|---|---|
+| ODME | 0.19876 | 0.994 | 1.000 |
+| queue | 0.22457 | 0.749 (onset 0.686, ongoing 0.812) | 0.795 (0.713 / 0.877) |
+| state + physics | 0.42871 | S_state ≈ 0.935–0.94, S_phys ≈ 0.67–0.68 | 0.432 |
+
+Where the headroom is:
+- queue: +0.1 S_queue is worth +0.030 total. Ongoing robustness to incidents comes first.
+- physics: +0.1 S_phys is worth +0.015. The density model and blackout cells are the levers.
+- state: about +0.005 at most.
+- ODME: done.

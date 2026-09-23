@@ -1,11 +1,12 @@
 """Per-target blend of pipeline shot A with the public Vera CSV (C3/C4/C5 family).
 
-    python scripts/blend_weights.py <w_pa> <w_fl> <w_mt> <out.csv>
+    python scripts/blend_weights.py <w_pa> <w_fl> <w_mt> <out.csv> [pipeline.csv]
 Paths are this workspace's; weights are the pipeline share per target. C5 = 0.6 0.3 0.6 (best 0.34947).
 """
 import pandas as pd,numpy as np,sys
 wpa,wfl,wmt,out=float(sys.argv[1]),float(sys.argv[2]),float(sys.argv[3]),sys.argv[4]
-a=pd.read_csv('/home/user/subs/s02_A_pipeline.csv').set_index('image_id')
+pipe=sys.argv[5] if len(sys.argv)>5 else '/home/user/subs/s02_A_pipeline.csv'
+a=pd.read_csv(pipe).set_index('image_id')
 v=pd.read_csv('/home/user/subs/s00_vera_public.csv').set_index('image_id').loc[a.index]
 g=pd.Series(np.load('/tmp/claude-0/test_groups.npy'),index=a.index)
 p=a.copy(); p['pa_deg']+=1.6

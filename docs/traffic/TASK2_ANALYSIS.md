@@ -460,3 +460,44 @@ Adoption rule: overall sim must be >= v4 - 0.002, and onset or the
 non-recurrent slices must improve. v5 gains +0.005 overall sim, with onset
 +0.008 (non-recurrent onset +0.018 to +0.020) and ongoing +0.002
 (non-recurrent ongoing +0.006 to +0.011). Adopted.
+
+### The file
+
+`/home/user/work/t2/lgb_v5.csv` was written by `robust_pipeline.py` with
+`T2_FEAT=feat_v3`. The models were retrained on all train windows:
+
+* **Onset:** mean of three v3-feature onset models (p1 config, location
+  prior, seeds 0/1/2) at 0.25 each, plus the v4/v3 onset model at 0.25.
+  Top-m expected-IoU decoding, T+30 only.
+* **Ongoing:** 0.35 × the LWR model with every feature, 0.35 × the LWR model
+  without location priors (both p2 config with window weights), 0.15 × the
+  v3 ongoing model, and 0.15 × the v4 no-location-prior model. Top-m
+  decoding.
+
+Checks:
+* 174,000 rows with the same keys and order as v4 and the templates;
+  `queue_pred` is in {0, 1}.
+* All 160 windows are non-empty.
+* Onset cells appear only at T+30: 309 cells, 1-9 per window, median 4.
+  Ongoing has 1,621-1,735 cells per step.
+* Mean window agreement with v4 is 0.964 on ongoing windows (minimum 0.80)
+  and 0.938 on onset windows. 12 of 80 onset windows changed. Most changes
+  add or drop links within the same candidate sites, or add the second site
+  (D12_I5_S). One window (D7_I10_W validation 005, 05:25) moved from link 28
+  to link 51.
+* Peak RSS was 3.2 GB for training and prediction, and 3.15 GB for the
+  largest CV run. Training ran with 2 threads.
+
+Reproduce:
+```
+T2_PHYSICS=1 T2_FEAT=/home/user/work/t2/feat_v3 python -m trafficflow.t2.build_features
+T2_FEAT=/home/user/work/t2/feat_v3 python -m trafficflow.t2.robust_pipeline lgb_v5 \
+  --onset train:on_v3:p1:nw:op:0.25:0 --onset train:on_v3:p1:nw:op:0.25:1 \
+  --onset train:on_v3:p1:nw:op:0.25:2 --onset lgb_v3:0.25 \
+  --ongoing train:og_v3:p2:w:noop:0.35 --ongoing train:og_v3_noloc:p2:w:noop:0.35 \
+  --ongoing lgb_v3:0.15 --ongoing rob_noloc_p2w:0.15
+```
+The CV rows above come from `python -m trafficflow.t2.robust cv VARIANT CFG
+[--weighted] [--cond queue_onset --oprior]` with `T2_FEAT=.../feat_v3`
+(`T2_SEED` sets the seed). `trafficflow.t2.v5_eval` compares the blends, and
+`python -m trafficflow.t2.onset_decode OOF` compares the decoders.

@@ -9,6 +9,7 @@
 | s05 | 2026-09-22 | s05_ens2_filt050.csv | s04 with stricter filter thr 0.50 | 0.407 @1024 (thr 0.5 on f0) | 0.33 |
 | s06 | 2026-09-23 | s06_k18full.csv | r18 full-data **3000 steps** (Kaggle CPU kernel ch-unet-r18-full) + filter thr 0.35 | n/a (full data) | **0.35** |
 | s07 | 2026-09-23 | s07_ens3.csv | mean(r18 f0, r18 full 1100, r18 full 3000) + filter thr 0.35 | n/a | 0.34 |
+| s08 | 2026-09-23 | s08_k18full_filtcomb.csv | s06 model + filter retrained on fold-0 + fold-2 OOF (316 imgs), thr 0.40 | 0.413 @1024 (2-fold) | 0.35 |
 
 Takeaways from day 1:
 - The LB shows only 2 decimals.

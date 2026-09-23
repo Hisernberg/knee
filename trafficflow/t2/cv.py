@@ -58,7 +58,9 @@ def gather(cond: str, cand_frac: float = 1.0, seed: int = 0, panels=PANELS8, dro
         pf = pq.ParquetFile(FEAT / f"feat_{p}.parquet")
         if cols is None:
             names = pf.schema_arrow.names
-            cols = [c for c in names if c not in NONFEAT and c not in set(drop)] + ["pcode"]
+            cols = [c for c in names if c not in NONFEAT and c not in set(drop)]
+            if "pcode" not in set(drop):
+                cols = cols + ["pcode"]
         w = pf.read(columns=["w"]).column("w").to_numpy()
         mask = np.isin(w, M.w.to_numpy())
         plan.append((p, pf, mask, M))
@@ -77,7 +79,8 @@ def gather(cond: str, cand_frac: float = 1.0, seed: int = 0, panels=PANELS8, dro
             for c in cs:
                 X[sl, cols.index(c)] = t.column(c).to_numpy()[mask]
             del t
-        X[sl, cols.index("pcode")] = np.float32(PANELS8.index(p))
+        if "pcode" in cols:
+            X[sl, cols.index("pcode")] = np.float32(PANELS8.index(p))
         t = pf.read(columns=["w", "k", "link", "y"])
         w = t.column("w").to_numpy()[mask]
         fm = M.set_index("w")

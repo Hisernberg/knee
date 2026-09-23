@@ -108,7 +108,13 @@ def oof(R: Rows, params, rounds, return_models=False, weighted=False):
     fold subsets share its bins to bound memory)."""
     p = np.full(len(R), np.nan, np.float32)
     ev_idx = np.flatnonzero(R.ev)
-    X_ev = R.X[ev_idx]  # keep only the rows we predict; the binned Dataset holds the rest
+    # keep only the rows we predict, on disk (memory-mapped): the binned Dataset holds the rest
+    tmp = WORK / f"_xev_{os.getpid()}.npy"
+    X_ev = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.float32, shape=(len(ev_idx), R.X.shape[1]))
+    for c0 in range(0, len(ev_idx), 200_000):
+        X_ev[c0:c0 + 200_000] = R.X[ev_idx[c0:c0 + 200_000]]
+    X_ev.flush(); del X_ev
+    X_ev = np.load(tmp, mmap_mode="r")
     full = lgb.Dataset(R.X, R.y.astype(np.float32), feature_name=list(R.cols), free_raw_data=True,
                        weight=window_weights(R.gw) if weighted else None,
                        params={"max_bin": params.get("max_bin", 255), "verbose": -1}).construct()
@@ -125,6 +131,11 @@ def oof(R: Rows, params, rounds, return_models=False, weighted=False):
             models.append(m)
         del m
         gc.collect()
+    del X_ev
+    try:
+        tmp.unlink()
+    except OSError:
+        pass
     return (p, models) if return_models else p
 
 

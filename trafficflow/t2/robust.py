@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import os
 import time
 
 import numpy as np
@@ -39,6 +40,17 @@ VARIANTS = {
     "dyn": LOC + ID + TIME,          # dynamics only
     "dyn_noearly": LOC + ID + TIME + EARLY,
 }
+PH = ["ph_fcap_slope", "ph_fcap_ext", "ph_fcap_max3", "ph_k_ratio", "ph_k_slope", "ph_k_ext", "ph_k_jam",
+      "ph_r_slope", "ph_r_ext", "ph_r_min3", "ph_r_margin_min", "ph_cap_dn1", "ph_cap_up1", "ph_lanes_dn",
+      "ph_lanes_up", "ph_capmin_dn", "ph_dr_dn", "ph_dr_up", "ph_dr_dnup3", "ph_d08_dn", "ph_d08_up", "ph_d07_dn",
+      "ph_d07_up", "ph_qobs", "ph_qobs_age", "ph_dq_dn", "ph_dq_up", "ph_c_qobs", "ph_fup_cap", "ph_fup_slope"]
+LW = ["lw_s_tail", "lw_s_emp", "lw_s_head", "lw_qu_cap", "lw_qq_cap", "lw_ku_kc", "lw_kq_kc", "lw_xrel_tail",
+      "lw_xrel_head", "lw_blen", "lw_inblk", "lw_tail_k", "lw_tail_emp_k", "lw_head_k"]
+VARIANTS.update({
+    # feat_v3 tables (T2_FEAT=.../feat_v3): onset rows carry PH, ongoing rows carry LW
+    "on_v2": PH + LW, "on_v3": LW,
+    "og_v2": PH + LW, "og_v3": PH, "og_v3_noloc": PH + LOC,
+})
 SHIFT_THR = (0.05, 0.2)
 
 
@@ -95,12 +107,14 @@ def report(df: pd.DataFrame, rec: pd.Series, cond: str) -> dict:
     return {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
 
 
-def run_cv(variant: str, cfg: str, weighted: bool, cond: str = "queue_ongoing"):
+def run_cv(variant: str, cfg: str, weighted: bool, cond: str = "queue_ongoing", oprior: bool = False):
     params, rounds = CFG[cfg]
-    tag = f"rob_{variant}_{cfg}{'_w' if weighted else ''}"
+    seed = int(os.environ.get("T2_SEED", "0"))
+    params = {**params, "seed": seed}
+    tag = f"rob_{variant}_{cfg}{'_w' if weighted else ''}{'_op' if oprior else ''}{f'_s{seed}' if seed else ''}"
     t = time.time()
     R, M = gather(cond, cand_frac=0.5 if cond == "queue_ongoing" else 1.0, drop=VARIANTS[variant])
-    if cond == "queue_onset" and variant.startswith("op"):
+    if cond == "queue_onset" and (variant.startswith("op") or oprior):
         from .oprior import add_to_rows
         R = add_to_rows(R, M, PANELS8)
     meta = dict(gw=R.gw, k=R.k, link=R.link, y=R.y)
@@ -111,7 +125,7 @@ def run_cv(variant: str, cfg: str, weighted: bool, cond: str = "queue_ongoing"):
     del R; gc.collect()
     Mi = M.drop_duplicates("gw").set_index("gw")
     df = window_scores(O, Mi, truth_lookup_y())
-    rec = recurrence("train")
+    rec = recurrence("train") if cond == "queue_ongoing" else onset_recurrence()
     res = report(df, rec, cond)
     print(tag, res, f"{time.time()-t:.0f}s", flush=True)
     return res
@@ -167,9 +181,10 @@ def main():
     ap.add_argument("cfg", nargs="?", default="fast")
     ap.add_argument("--weighted", action="store_true")
     ap.add_argument("--cond", default="queue_ongoing")
+    ap.add_argument("--oprior", action="store_true")
     a = ap.parse_args()
     if a.mode == "cv":
-        run_cv(a.variant, a.cfg, a.weighted, a.cond)
+        run_cv(a.variant, a.cfg, a.weighted, a.cond, a.oprior)
 
 
 

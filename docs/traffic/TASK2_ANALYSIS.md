@@ -360,3 +360,103 @@ Expected effect on March: a small gain (the recur < 0.05 bucket is 12.5% of
 March ongoing windows, +0.026 there, +0.004 elsewhere). Most of the LB gap
 comes from the March window mix (small, non-recurrent queues) and is not
 recoverable by any variant tested here.
+
+## 12. Physics and shockwave features: `lgb_v5`
+
+**Public LB for `lgb_v4_robust`:** it was submitted together with a Task 1
+change. Public 0.85732 vs 0.85204 (+0.0053); Task 2's share was not separated.
+
+### New features (`physics.py`, data <= T only; feature tables `feat_v3/`)
+
+* **Onset rows (`ph_*`, 30 columns).** For each link, from the history and
+  the origin slot where visible:
+  * flow/capacity: level, 30-min least-squares slope, linear extrapolation to
+    T+30, maximum 15-min mean in the hour;
+  * density `k = q/v` against critical density (`fd_parameters`): ratio,
+    slope, extrapolation to T+30, `k/k_jam`;
+  * speed margin to `v_cut`: slope, extrapolation to T+30, 15-min minimum, and
+    the minimum over the hour;
+  * bottleneck signature: capacity ratio to the downstream and upstream
+    neighbour, lane change to each neighbour, minimum capacity within 1.5 km
+    downstream relative to the link, and the downstream-minus-upstream speed
+    ratio difference (1 link and ±2 links);
+  * distance downstream and upstream to the nearest link already below 0.8 and
+    below 0.7 of free speed;
+  * the at-most-one queued observation per link an onset history may hold:
+    presence at the link, its age, the distance to the nearest link with one,
+    and the corridor count;
+  * arriving demand: mean flow of the 3 upstream links over local capacity,
+    and its slope.
+
+  One observation: in D7_I10_E onset windows no link is below 0.8 of free
+  speed at T. Queues form from about 0.87 free speed within 35 min, so demand
+  against capacity carries most of the signal.
+* **Ongoing rows (`lw_*`, 11 shared + 3 per-step columns).**
+  * Queue blocks at the origin: runs of links with speed <= `v_cut`, taking the
+    slot-T value where visible and the last history value otherwise. Each
+    block has a tail (upstream end) and head milepost.
+  * Rankine-Hugoniot tail speed `s = (q_q - q_u)/(k_q - k_u)`. The arriving
+    state is the mean of the 3 links upstream of the tail; the queue state is
+    the first 3 links of the block.
+  * Head speed from the state downstream of the head. Empirical tail speed
+    from the best-overlapping block 20 min earlier.
+  * Per link, from the block containing it or the nearest one downstream
+    (<= 12 km; for the head, the nearest one upstream, <= 5 km): signed
+    distances to the tail and head, block length, arriving and queue flow over
+    capacity, densities over `k_c`.
+  * Per step k: signed distance to the predicted tail `x_tail + s*5k min`
+    (RH speed, and separately the empirical speed) and to the predicted head.
+
+  Sanity check on 100 D7_I10_E windows: within 3 km of the tail, 81% of
+  cells predicted inside the RH-extrapolated queue are queued, against 24% of
+  those predicted outside.
+
+### Set-level decoding for onset (the v3 onset OOF)
+
+| decoder | sim | off | recur<0.05 | recur<0.2 |
+|---|---:|---:|---:|---:|
+| top-m, expected IoU (current) | **0.713** | 0.758 | **0.275** | **0.543** |
+| best contiguous range | 0.666 | 0.706 | 0.261 | 0.511 |
+| most likely link + best upstream extension | 0.498 | 0.493 | 0.177 | 0.376 |
+| most likely site (p >= 0.05 cluster), top-m inside | 0.711 | 0.766 | 0.275 | 0.543 |
+| best 1-2 sites (2nd if its mass >= 0.5 × 1st) | 0.714 | 0.762 | 0.270 | 0.542 |
+
+Committing to one site or block does not beat top-m. The queue often extends
+downstream of the most likely link, and the model already picks the right
+site in most windows. Site confusion on D7_I405_S, D12_I5_S and D12_I5_N is
+mostly on the diagonal. The remaining error is the extent within the site:
+for example D7_I405_S's 15-link site B scores 0.57 even when the site is
+right. Top-m stays.
+
+### CV per slice (4-fold, sim = selector-drawn train windows; recur slices are plain means)
+
+| model / blend | onset sim | onset off | onset rec<0.05 | onset rec<0.2 |
+|---|---:|---:|---:|---:|
+| v4 onset (v2 features + prior, p1) | 0.7133 | 0.7578 | 0.275 | 0.543 |
+| v3 features (+ physics) + prior, p1, seed 0 | 0.7152 | 0.7703 | 0.282 | 0.551 |
+| same, seed 1 / seed 2 | 0.7171 / 0.7171 | 0.768 / 0.775 | 0.285 / 0.291 | 0.551 / 0.555 |
+| mean of the 3 seeds | 0.7200 | 0.7630 | 0.289 | 0.557 |
+| no prior, v3 features | 0.7109 | 0.7638 | 0.239 | 0.524 |
+| **v5 onset: 0.75 × 3 seeds + 0.25 × v4 onset** | **0.7210** | **0.7691** | **0.295** | **0.561** |
+
+| model / blend | ongoing sim | ongoing off | ongoing rec<0.05 | ongoing rec<0.2 |
+|---|---:|---:|---:|---:|
+| fast config, v2 features | 0.8529 | 0.8767 | 0.522 | 0.731 |
+| fast config, + LWR | 0.8567 | 0.8725 | 0.546 | 0.741 |
+| p2w, v2 features (v3's model) | 0.8772 | 0.8875 | 0.562 | 0.766 |
+| p2w, + LWR | 0.8796 | 0.8873 | 0.581 | 0.773 |
+| p2w, + LWR, no location priors | 0.8792 | 0.8869 | 0.597 | 0.772 |
+| v4 ongoing: 50/50 v2 all + v2 noloc | 0.8809 | 0.8889 | 0.588 | 0.775 |
+| 50/50 LWR all + LWR noloc | 0.8820 | 0.8883 | 0.599 | 0.779 |
+| 4-way equal | 0.8832 | 0.8902 | 0.598 | 0.781 |
+| **v5 ongoing: 0.35 LWR all + 0.35 LWR noloc + 0.15 v2 all + 0.15 v2 noloc** | **0.8833** | **0.8906** | **0.599** | **0.781** |
+
+| | onset sim / off | ongoing sim / off | **overall sim / off** |
+|---|---|---|---|
+| lgb_v4_robust | 0.7133 / 0.7578 | 0.8809 / 0.8889 | 0.7971 / 0.8233 |
+| **lgb_v5** | **0.7210 / 0.7691** | **0.8833 / 0.8906** | **0.8022 / 0.8299** |
+
+Adoption rule: overall sim must be >= v4 - 0.002, and onset or the
+non-recurrent slices must improve. v5 gains +0.005 overall sim, with onset
++0.008 (non-recurrent onset +0.018 to +0.020) and ongoing +0.002
+(non-recurrent ongoing +0.006 to +0.011). Adopted.

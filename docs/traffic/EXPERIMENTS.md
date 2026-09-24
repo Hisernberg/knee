@@ -70,6 +70,8 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-24 12:02 | **S1 C1** `C1_gate06_t2v5.zip` | B1 with queue v5 (279 queue cells) | **0.85975** | – | +0.00243 vs B1 → ΔS_queue = **+0.0081** (CV +0.005). Base → C1 |
 | 2026-09-24 12:08 | **S2 D1** `D1_gate06_t2v6.zip` | C1 with v6 onset trained on corrected labels (42 onset cells) | **0.86428** | – | +0.00453 vs C1 → ΔS_queue = +0.0151, **onset +0.030** on March. Base → D1 |
 | 2026-09-24 12:11 | **S3 D2** `D2_gate06a75_t2v6.zip` | D1 with gate split a = 0.75 (266,914 dense-traffic state rows) | **0.86492** | 14/158 overall, **8/128 post-rebuild** | +0.00064 vs D1, **exactly the local prediction (+0.0006)**. Base → D2; post-rebuild top 0.88318 |
+| 2026-09-24 14:40 | **S4 E1** `E1_fd_gate06a75_t2v6.zip` | D2 with Task 1 state from the FD-feature models `full3` (state rows only) | **0.86591** | 14/160 overall, **8/130 post-rebuild** | +0.00099 vs D2 (local +0.0012). Base → E1; post-rebuild top 0.88318 |
+| 2026-09-24 14:42 | **S5 P4** probe `P4_E1_onset_zeroed.zip` | E1 with onset windows zeroed (311 cells) | 0.75669 | – | **onset = 2·(E1 − P4)/0.30 = 0.728** on March (A: 0.686) |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |
@@ -171,3 +173,27 @@ Full-coverage holdout, gate 0.6, a = 0.75:
 | D12_I405_N | 0.39232 | 0.39293 | +0.0006 | 0.6005 → 0.6055 |
 
 Better on 4/4 panels (mean +0.0012 total), with gains from both the speed/flow and the density models. **Adopted.** Full-data fit `full3` is in progress.
+
+## Day summary 2026-09-24: B1 0.85732 → E1 0.86591 (+0.0086)
+Every step changed a single, locally validated factor. Each Task 1 delta matched its holdout prediction to within 0.0002.
+
+| Step | Change | LB Δ | Local prediction |
+|---|---|---|---|
+| S1 | queue v5 (physics + shockwave features) | +0.00243 (ΔS_queue +0.0081) | CV +0.005 × 0.30 |
+| S2 | onset v6 (trained on corrected labels) | +0.00453 (onset +0.030) | CV onset +0.005 to +0.012 |
+| S3 | gate split a = 0.75 | +0.00064 | +0.0006 |
+| S4 | Task 1 FD-feature models | +0.00099 | +0.0012 |
+
+**Decomposition of E1 (0.86591).** Only the gating share of B1 is estimated locally; everything else is exact from probes and single-factor deltas.
+
+| Task | Weighted | Task score |
+|---|---|---|
+| ODME | 0.19876 | 0.994 |
+| Task 1 + 3 | ≈ 0.4319 | 0.4287 (A) + gating 0.0016 + split 0.0006 + FD 0.0010 |
+| queue | ≈ 0.2352 | S_queue ≈ 0.784: **onset 0.728 (exact)**, ongoing ≈ 0.840 |
+
+The ongoing retrain on corrected labels (v7) was rejected: +0.0006 in the conservative evaluation, and the non-recurrent slice got worse. The label bias sits at queue formation, not inside established queues.
+
+**Next lever: onset.**
+- March onset is 0.728, against about 0.76 in CV (old truth) and about 0.86 (corrected truth), so March onsets transfer worst. Diagnose March onset windows next (site recurrence, time of day, incident-like sites) with history-only features.
+- Each +0.1 onset is worth +0.015 total. The gap to the leader is 0.0173.

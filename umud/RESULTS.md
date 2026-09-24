@@ -79,3 +79,15 @@ Kaggle GPU quota and CPU session slots were exhausted, so this ran locally from 
 Validation Dice 0.303 → 0.333 (the old validation split shared duplicates with training).
 OSF benchmark: PA `pa_wmed` 1.06° → 1.02°, FL `fl_med` 8.50 → 8.10 mm, `fl_top5` 6.73 → 6.37 mm, MT unchanged.
 Prepared: `submissions/s11_Aft_pipeline.csv` (re-runnable) and `submissions/s12_C5ft.csv` (C5 weights on A_ft).
+
+## Day 3 (2026-09-24): single-axis weight search around C5 (pipeline share per target)
+| Shot | PA / FL / MT weights | Public LB |
+|---|---|---|
+| C5ft | .6 / .3 / .6 on the fine-tuned pipeline | 0.35317 (fine-tune helps on OSF, not on test) |
+| C6 | .75 / .3 / .6 | 0.35671 |
+| C7 | .6 / .2 / .6 | 0.35103 |
+| C8 | .6 / .4 / .6 | 0.35596 |
+| **C9** | **.6 / .3 / .75** | **0.34509 (rank 8, new best)** |
+
+PA is optimal near 0.6 (quadratic fit ≈ 0.56) and FL near 0.3. MT is still improving at 0.75, consistent with the OSF
+benchmark (pipeline MT 0.50 mm vs DLTrack 1.03 mm), so next is MT 0.9 / 1.0.

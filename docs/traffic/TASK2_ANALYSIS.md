@@ -670,3 +670,65 @@ Other modules for this section:
 
 The CV runs use `robust cv on_v3|on_v2 p1 --cond queue_onset --oprior`, with
 `T2_OOF_ALL=1` and `T2_TAGX` set.
+
+## 14. Hybrid-truth label fix for the ongoing model: not adopted
+
+**LB context (March, the coordinator's single-factor probes).** The v5 ongoing
+blend gave S_queue +0.0081. The v6 onset label fix gave S_queue +0.0151,
+which is onset +0.030 on March (CV had said +0.005 to +0.012).
+
+**How much the ongoing labels change.** On the 3,001 original simulated
+ongoing windows, the hybrid truth changes 0.23% of horizon cells.
+* That is 1.7% of the old queued cells, or 2.6 cells per window against
+  about 148 queued.
+* Most changes add queue cells (6,690 added vs 1,049 removed), and 79% of
+  windows have at least one change.
+* Where the changed cells sit: 33% just upstream of a queue block (tail
+  side), 26% just downstream (head side), 38% inside blocks (gaps filled),
+  2% elsewhere.
+* The pattern is the same in growing and dissipating windows: 2.3 vs 2.9
+  changed cells per window, about 0.9 on the tail side and 0.6-0.7 on the
+  head side.
+* For onset the change was 7-17% of the T+30 queue cells, much larger than
+  here.
+
+**Evaluation.**
+* Setup: the v5 blend recipe (0.35 LWR-all + 0.35 LWR-noloc + 0.15 v2-all +
+  0.15 v2-noloc, window weights). Each component was retrained with old or
+  with hybrid labels on the windows the selector draws on the hybrid truth,
+  4-fold CV.
+* Proxy: the fast config (31 leaves, 250 rounds) stood in for p2. Eight
+  p2 CV runs (about 40-50 min each on the shared machine) did not fit in the
+  time available.
+* Labels were swapped on the fly (`T2_RELABEL=<npz>:<key>` in `cv.gather`),
+  so no relabelled feature-table copies are kept on disk.
+
+| re-drawn windows (2,081 sim) | old labels | hybrid labels | Δ sim (paired bootstrap) | windows better / worse | off | rec<0.05 | rec<0.2 |
+|---|---:|---:|---:|---|---|---|---|
+| old truth | 0.8665 | 0.8671 | **+0.0006 ± 0.0006** | 948 / 932 | 0.8784 → 0.8828 | **0.586 → 0.581** | 0.747 → 0.748 |
+| hybrid truth | 0.8634 | 0.8666 | **+0.0032 ± 0.0006** | 1,036 / 839 | 0.8810 → 0.8878 | **0.578 → 0.572** | 0.741 → 0.743 |
+
+The first component alone (LWR-all) shows the same pattern: +0.0006 ± 0.0007
+under the old truth, +0.0028 ± 0.0006 under the hybrid truth, and recurrence
+< 0.05 at −0.006 under both.
+
+**Verdict: not adopted.**
+* The rule needs ≥ +0.003 under both truths on the re-drawn windows and no
+  worse non-recurrent slice. The hybrid-truth gain passes (+0.0032).
+* The old-truth gain (+0.0006) fails, and the recurrence < 0.05 slice worsens
+  under both truths (−0.005 / −0.006).
+* The original-window rows were stopped once the conservative rows had
+  decided the verdict.
+
+**Why the effect is small.** Ongoing labels change on ~1.7% of queued cells,
+spread over boundaries and gaps. The old truth already gets most ongoing cells
+right: time interpolation recovers 97% of queued cells inside established
+queues, against 27% at the first queued slot of a new one. So the bias the fix
+removes is concentrated at onset. v6 (onset fix + v5 ongoing) remains the
+recommended file.
+
+**Code.**
+* `og_labelfix_eval.py`: the evaluation.
+* `ongoing_v7.py`: the v7 builder, ready but not run.
+* Tables: `/home/user/work/t2h/feat_og` (re-drawn-window ongoing features,
+  ~1 GB). Delete it if disk is needed.

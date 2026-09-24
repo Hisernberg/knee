@@ -88,6 +88,12 @@ def gather(cond: str, cand_frac: float = 1.0, seed: int = 0, panels=PANELS8, dro
         meta["k"][sl] = t.column("k").to_numpy()[mask]
         meta["link"][sl] = t.column("link").to_numpy()[mask]
         meta["y"][sl] = t.column("y").to_numpy()[mask]
+        relabel = os.environ.get("T2_RELABEL")   # "<npz path with {panel}>:<key>", e.g. hybrid / old truth
+        if relabel:
+            path, key = relabel.rsplit(":", 1)
+            Yr = np.load(path.format(panel=p), allow_pickle=True)[key]
+            meta["y"][sl] = Yr[w.astype(np.int64), meta["k"][sl].astype(np.int64) - 1, meta["link"][sl].astype(np.int64)]
+            del Yr
         meta["fold"][sl] = fm.fold.reindex(w).to_numpy()
         meta["ev"][sl] = fm.src.reindex(w).isin(["sim", "off"]).to_numpy()
         del t

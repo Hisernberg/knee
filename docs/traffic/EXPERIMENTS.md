@@ -146,3 +146,28 @@ CV on sim / official windows. Details in docs/traffic/TASK2_ANALYSIS.md section 
 |---|---|---|---|
 | `C1_gate06_t2v5.zip` | B1 | Task 2 v4 → v5 (279 queue cells) | about +0.0015 (CV × 0.30), possibly more on March |
 | `C2_gate06a75_t2v5.zip` | C1 | gate split a 0.25 → 0.75 (266,914 dense-traffic state cells) | about +0.0006 |
+
+## Task 1 with FD (fundamental-diagram) features, hold3 (2026-09-24)
+Column-based FD features (`TFB_FD=1`, `t1_pipeline.add_fd`, verified identical to the native path): congested-branch flow implied by speed, speed implied by flow, and q/v density for the interpolated/previous/next values, plus `fd_w`, `fd_kj` and v/v_f.
+
+Holdout RMSE, hold1 → hold3:
+
+| Model | hold1 | hold3 |
+|---|---|---|
+| speed | 1.543 | 1.515 |
+| flow | 30.57 | 30.19 |
+| density | 0.567 | 0.541 |
+| dark speed | 6.903 | 6.888 |
+| dark flow | 65.86 | 65.70 |
+| dark density | 3.21 | 3.19 |
+
+Full-coverage holdout, gate 0.6, a = 0.75:
+
+| Panel | J hold1 | J hold3 | Δ | LWR hold1 → hold3 |
+|---|---|---|---|---|
+| D12_I5_S | 0.38618 | 0.38810 | +0.0019 | 0.5916 → 0.6068 |
+| D7_I10_W | 0.38800 | 0.38862 | +0.0006 | 0.5868 → 0.5905 |
+| D7_I405_S | 0.38044 | 0.38215 | +0.0017 | 0.5896 → 0.5985 |
+| D12_I405_N | 0.39232 | 0.39293 | +0.0006 | 0.6005 → 0.6055 |
+
+Better on 4/4 panels (mean +0.0012 total), with gains from both the speed/flow and the density models. **Adopted.** Full-data fit `full3` is in progress.

@@ -24,7 +24,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from .core import FEAT, PANELS8, WORK, aggregate, iou
+from .core import FEAT, K, PANELS8, WORK, aggregate, iou
 from .cv import gather, oof, truth_lookup
 from .models import CFG, eiou_topm
 
@@ -118,12 +118,17 @@ def run_cv(variant: str, cfg: str, weighted: bool, cond: str = "queue_ongoing", 
         from .oprior import add_to_rows
         R = add_to_rows(R, M, PANELS8)
     meta = dict(gw=R.gw, k=R.k, link=R.link, y=R.y)
-    ev = R.ev.copy()
-    p = oof(R, params, rounds, weighted=weighted)
+    pred_all = os.environ.get("T2_OOF_ALL") == "1"
+    ev = np.ones(len(R), bool) if pred_all else R.ev.copy()
+    if pred_all:
+        tag += "_all"
+    tag += os.environ.get("T2_TAGX", "")
+    p = oof(R, params, rounds, weighted=weighted, pred_all=pred_all)
     O = pd.DataFrame({k: v[ev] for k, v in meta.items()} | {"p": p[ev]})
     O.to_parquet(WORK / f"oof_{cond}_{tag}.parquet")
     del R; gc.collect()
     Mi = M.drop_duplicates("gw").set_index("gw")
+    O = O[O.gw.map(Mi.src).isin(["sim", "off"]).to_numpy()]
     df = window_scores(O, Mi, truth_lookup_y())
     rec = recurrence("train") if cond == "queue_ongoing" else onset_recurrence()
     res = report(df, rec, cond)
@@ -135,10 +140,23 @@ _Y = None
 
 
 def truth_lookup_y():
+    """Window truths [n, K, L] per panel. T2_TRUTH=y2 switches to the imputed
+    truth (truthfix.py) with onset windows' steps 1-5 set empty (the organizer
+    confirms the onset horizon is empty before T+30)."""
     global _Y
     if _Y is None:
-        _Y = {p: np.load(WORK / f"ds_{p}.npz", allow_pickle=True)["y"] for p in PANELS8}
+        _Y = {p: load_truth(p) for p in PANELS8}
     return _Y
+
+
+def load_truth(p: str) -> np.ndarray:
+    z = np.load(WORK / f"ds_{p}.npz", allow_pickle=True)
+    if os.environ.get("T2_TRUTH") != "y2":
+        return z["y"]
+    y2 = np.load(WORK / f"ds_{p}_y2.npz")["y"].copy()
+    on = z["w_condition"] == "queue_onset"
+    y2[on, :K - 1] = False
+    return y2
 
 
 def meta_index(cond="queue_ongoing"):

@@ -28,6 +28,14 @@ class MaskedView:
         self.ok = ok
         self.q = ok & (self.speed <= self.vcut)
 
+    def flipped(self) -> "MaskedView":
+        """Same view with the link axis reversed (numpy views, no copies)."""
+        o = object.__new__(MaskedView)
+        for k in ("speed", "flow", "elig", "ok", "q"):
+            setattr(o, k, getattr(self, k)[:, ::-1])
+        o.vcut = self.vcut[::-1].copy(); o.cap = self.cap[::-1].copy()
+        return o
+
 
 def extra_features(mv: MaskedView, T: np.ndarray, hist_last_r: np.ndarray) -> tuple[dict, dict]:
     """Shared [n, L] features and per-step [n, K, L] features."""

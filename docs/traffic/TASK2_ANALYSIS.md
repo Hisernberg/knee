@@ -501,3 +501,172 @@ The CV rows above come from `python -m trafficflow.t2.robust cv VARIANT CFG
 [--weighted] [--cond queue_onset --oprior]` with `T2_FEAT=.../feat_v3`
 (`T2_SEED` sets the seed). `trafficflow.t2.v5_eval` compares the blends, and
 `python -m trafficflow.t2.onset_decode OOF` compares the decoders.
+
+## 13. Onset extent: diagnosis, decoders, and the label fix (`lgb_v6`)
+
+### Diagnosis on the v5 onset OOF (old truth, 2,082 sim windows)
+
+**The site is usually right; the boundaries are what go wrong.**
+* The predicted block overlaps the true block in 94.4% of windows, and IoU on
+  those windows is 0.776.
+* When both ends of the block are exact (61.6% of those windows) IoU is
+  0.931; otherwise it is 0.527.
+* The head is off by at least one link in 22% of them, the tail in 22%.
+
+**Relative to this truth the model over-predicts.** Per window there are 0.68
+false-positive links inside the site and 0.12 false negatives, plus 0.17 / 0.13
+outside it. Predicted minus true block size:
+
+| predicted − true links | share of windows |
+|---|---:|
+| 0 | 54% |
+| +1 | 24% |
+| +2 | 8% |
+| +3 or more | 7% |
+| negative | 7% |
+
+**Short links are the hardest.**
+* Sites with links of 0.2 km or less score IoU 0.61 (0.71 km predicted vs
+  0.34 km true).
+* Links of 0.45-0.7 km score 0.91.
+* By panel (IoU when the site is right), D7_I405_S is weakest at 0.62 and
+  D7_I10_W strongest at 0.89. The 07-08 h origins score 0.71-0.72; 14 h
+  scores 0.83.
+
+**Physics extent is not predictable from demand.**
+* At a given head link the first-slot extent varies by a standard deviation of
+  0.5-1.5 links.
+* It is nearly uncorrelated with anything observable at T: flow/capacity, its
+  slope and extrapolation, upstream demand, density (all |r| <= 0.24 at the
+  four main sites).
+* That fits the extent being set by when, within the 5-minute slot, the
+  breakdown happens, which cannot be observed.
+* With the true head known, the site's modal extent gives block IoU 0.893.
+* A shockwave-speed extent estimate therefore had nothing to add over the
+  per-site empirical extent.
+
+**Two findings that affect other work.**
+* **Direction.** On the W/S panels (D7_I10_W, D7_I210_W, D7_I405_S, D12_I5_S)
+  link i+1 is the upstream neighbour of link i, not the downstream one. All
+  "downstream/upstream" features, and the LWR tail/head features of section 12,
+  are mirrored on those panels. The tree compensates with the panel code:
+  direction-normalised onset features scored 0.7195 vs 0.7210 for the 4-model
+  blend.
+* **Label bias.** The train truth is biased at the first queued slot. That
+  bias, not the model, explains most of the "over-prediction" above (next
+  subsection).
+
+### Decoders and stacking (v5 OOF, old truth, 6-step metric)
+
+| method | onset sim | off | rec<0.05 | rec<0.2 |
+|---|---:|---:|---:|---:|
+| **top-m (v5)** | **0.7210** | 0.7691 | 0.295 | 0.561 |
+| head (from top-m) + empirical extent, contiguous block upstream | 0.6708 | 0.7225 | 0.296 | 0.532 |
+| head from the model's head probability + extent | 0.6680 | 0.7138 | 0.282 | 0.521 |
+| hybrid: top-m inside the predicted block ± 1 link | 0.7216 | 0.7691 | 0.295 | 0.562 |
+| stage-2 stacking on the probability profile (3 seeds, 50/50 with stage 1) | 0.7237 | 0.7710 | 0.311 | 0.576 |
+
+* **Contiguous blocks lose** because true first-slot blocks often skip a link.
+  At D7_I405_N link 350 is rarely queued between 349 and 351, and the pointwise
+  model already skips it.
+* **Library shape-prior decoder.** It computes the posterior over training
+  truth shapes of the panel, then takes the Bayes-optimal expected-IoU choice.
+  It gains at most +0.002 to +0.004 and loses on the official windows and the
+  non-recurrent slice.
+* **Stacking is real but small:** +0.0027 ± 0.0016 (paired bootstrap).
+* Cluster features and a larger stage-2 model did not help. Adding four more
+  stage-1 models gave 0.7213.
+
+None of these clears the +0.005 bar.
+
+### The label fix
+
+**The problem.** The train truth fills missing cells (about 17%, random
+detector gaps) by time interpolation first. At the first queued slot of a new
+queue the state is sharp in time and smooth in space. A masked test hid
+observed cells and re-filled them; queued-cell recall at onset slots:
+
+| fill of a missing cell | accuracy | queued recall | specificity |
+|---|---:|---:|---:|
+| time interpolation (used so far) | 0.792 | **0.266** | 0.984 |
+| space interpolation | 0.819 | 0.550 | 0.916 |
+| mean of the two | 0.859 | 0.506 | 0.988 |
+| **LightGBM imputer** (`truthfix.py`: neighbours t±1,2, links ±1,2, diagonals) | **0.962** | **0.947** | 0.967 |
+
+**The imputer.**
+* On ongoing horizon cells it is as good as time interpolation (0.988 vs
+  0.984).
+* On observed cells 5-15 min before an onset its specificity is 0.98-0.99.
+* It was trained on even train days and checked on odd days.
+* The official truth is the complete underlying state, so the old fill's
+  missing queue cells were an artifact of our truth only. The model learned
+  first-slot blocks 7-17% too small (per panel) and was scored against them.
+
+**Hybrid truth.** The imputer's 1-2% false-positive rate (specificity
+0.98-0.99 before onsets), applied to millions of missing cells, scatters false
+queue cells through free flow. The window selector's "any queued cell" rule
+then breaks: 5/80 official windows reproduced. The hybrid truth keeps the
+old fill everywhere except missing cells within ±5 min / ±2 links of an
+observed queued cell, where the imputer decides.
+* Selector reproduction: 68/80 exact (old truth 66) and 75/80 within 5 min
+  (old 78).
+* It adds 7-17% queued cells at T+30 in onset windows (D7_I10_E 3,019 → 3,428;
+  D7_I405_N 1,397 → 1,631).
+
+**Results.** Same 4-model onset recipe as v5 (v3 physics features seeds 0/1/2
++ v2 features, p1, location prior), old vs hybrid labels:
+
+| evaluation | truth | old labels (v5) | hybrid labels (v6) | Δ sim | off | rec<0.05 | rec<0.2 |
+|---|---|---:|---:|---:|---|---|---|
+| original sim windows minus 222 whose hybrid T+30 is empty (1,860), actual v5 OOF | hybrid | 0.8510 | 0.8629 | **+0.0119** | 0.9075 → 0.9194 | 0.358 → 0.392 | 0.679 → 0.702 |
+| same | old | 0.7750 | 0.7827 | **+0.0077** | 0.7881 → 0.7932 | 0.332 → 0.352 | 0.632 → 0.650 |
+| windows re-drawn by the selector on the hybrid truth (2,081) | hybrid | 0.8518 | 0.8589 | **+0.0071 ± 0.0017** | 0.8758 → 0.8841 | 0.406 → 0.412 | 0.689 → 0.704 |
+| same | old | 0.7555 | 0.7605 | **+0.0050 ± 0.0018** | 0.7565 → 0.7659 | 0.373 → 0.374 | 0.632 → 0.641 |
+
+* On the re-drawn windows, 110 improve and 46 worsen under the hybrid truth;
+  102 and 50 under the old truth.
+* Absolute levels depend on the truth. Under the corrected truth onset CV is
+  about 0.85-0.86, not 0.72: much of the old "error" was missing truth cells.
+  Compare within a row only.
+* Ongoing is unchanged, so overall sim rises by half the onset gain, about
+  +0.0025 to +0.006.
+
+**Adopted.**
+* Onset improves by at least +0.005 in every evaluation. The most conservative
+  one (re-drawn windows, old truth) sits exactly at the bar.
+* Overall is not lower than v5, and the non-recurrent onset slices improve
+  everywhere.
+
+### The file
+
+`/home/user/work/t2/lgb_v6.csv`:
+* **Onset:** the mean of four onset models (the v5 recipe), trained on the
+  re-drawn windows with hybrid labels. The location prior is built from
+  hybrid-truth onsets, and the feature tables (`/home/user/work/t2h/feat`)
+  use hybrid-truth time-of-day profiles. Top-m decoding, T+30 only.
+* **Ongoing:** rows are the lgb_v5 rows, identical.
+
+Checks:
+* 174,000 rows with the same keys and order as v5 and the templates; binary.
+* All 160 windows are non-empty.
+* 311 onset cells, all at T+30, 1-9 per window (median 4).
+* 19 of 80 onset windows changed vs v5. Mostly the site extent moved by one or
+  two links, or a second site was added or dropped. D7_I10_W validation 005
+  moved back to link 28 (v4's choice).
+
+Reproduce:
+```
+python -m trafficflow.t2.truthfix fit                 # imputer + masked check
+python -m trafficflow.t2.truthfix relabel hybrid      # WORK/ds_<p>_y2.npz (hybrid truth)
+T2_WORK=/home/user/work/t2h T2_TRUTHQ=/home/user/work/t2/ds_{panel}_y2.npz python -m trafficflow.t2.dataset
+T2_WORK=/home/user/work/t2h T2_PHYSICS=1 T2_ONLY=queue_onset T2_FEAT=/home/user/work/t2h/feat python -m trafficflow.t2.build_features
+T2_WORK=/home/user/work/t2h T2_FEAT=/home/user/work/t2h/feat python -m trafficflow.t2.onset_v6 /home/user/work/t2/lgb_v6.csv
+```
+Other modules for this section:
+* `onset_extent.py`: diagnosis, head+extent and library decoders.
+* `stack.py`: stage-2 stacking.
+* `onset_decode.py`: site decoders.
+* `T2_NORMDIR=1` in `build_features.py`: direction-normalised features.
+
+The CV runs use `robust cv on_v3|on_v2 p1 --cond queue_onset --oprior`, with
+`T2_OOF_ALL=1` and `T2_TAGX` set.

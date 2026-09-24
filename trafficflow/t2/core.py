@@ -49,7 +49,19 @@ TRAIN_END = SPLIT_DAYS["train"][1] * SLOTS
 # statics
 @lru_cache(None)
 def statics(panel: str) -> dict:
-    """Per-link static arrays in cache (spatial) order."""
+    """Per-link static arrays in cache (spatial) order. ``<panel>@rev`` gives
+    the same panel with the link axis reversed (mileposts recomputed), used to
+    put every panel in traffic direction (index increasing downstream)."""
+    if panel.endswith("@rev"):
+        base = statics(panel[:-4])
+        out = dict(base)
+        for k, v in base.items():
+            if isinstance(v, np.ndarray) and v.shape == (base["L"],):
+                out[k] = v[::-1].copy()
+        out["links"] = base["links"][::-1]
+        out["lid"] = {l: i for i, l in enumerate(out["links"])}
+        out["mp"] = np.cumsum(out["length"])
+        return out
     links = [str(x) for x in network(panel)["links"]]
     nd = REL / "corridors" / panel / "network"
     lk = pd.read_csv(nd / "links.csv", dtype={"link_id": str}).drop_duplicates("link_id").set_index("link_id").reindex(links)
@@ -78,6 +90,18 @@ def statics(panel: str) -> dict:
                 length=length, mp=mp, lanes=fd.lanes.to_numpy(np.float64),
                 cap=fd.capacity_vph.to_numpy(np.float64), kc=fd.critical_density.to_numpy(np.float64),
                 kjam=fd.k_jam.to_numpy(np.float64), on=on, off=off)
+
+
+@lru_cache(None)
+def direction(panel: str) -> int:
+    """+1 if the link index increases downstream (E/N panels), -1 if link i+1
+    is the incoming (upstream) link of link i (W/S panels)."""
+    net = network(panel); topo = net["topo"]; links = net["links"]
+    nxt = {l: (str(o).split(";") if isinstance(o, str) else []) for l, o in zip(topo.link_id.astype(str), topo.outgoing_link_ids)}
+    prv = {l: (str(o).split(";") if isinstance(o, str) else []) for l, o in zip(topo.link_id.astype(str), topo.incoming_link_ids)}
+    fwd = sum(links[i + 1] in nxt[links[i]] for i in range(len(links) - 1))
+    bwd = sum(links[i + 1] in prv[links[i]] for i in range(len(links) - 1))
+    return 1 if fwd >= bwd else -1
 
 
 def fill_truth(S: np.ndarray, tlim: int = 3, slim: int = 2) -> np.ndarray:

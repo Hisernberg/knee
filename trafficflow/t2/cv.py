@@ -103,11 +103,11 @@ def window_weights(gw: np.ndarray) -> np.ndarray:
     return (w / w.mean()).astype(np.float32)
 
 
-def oof(R: Rows, params, rounds, return_models=False, weighted=False):
+def oof(R: Rows, params, rounds, return_models=False, weighted=False, pred_all=False):
     """Out-of-fold probabilities for rows of eval windows (one binned Dataset,
     fold subsets share its bins to bound memory)."""
     p = np.full(len(R), np.nan, np.float32)
-    ev_idx = np.flatnonzero(R.ev)
+    ev_idx = np.arange(len(R)) if pred_all else np.flatnonzero(R.ev)
     # keep only the rows we predict, on disk (memory-mapped): the binned Dataset holds the rest
     tmp = WORK / f"_xev_{os.getpid()}.npy"
     X_ev = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.float32, shape=(len(ev_idx), R.X.shape[1]))

@@ -24,3 +24,10 @@ python -W ignore -m trafficflow.t2.robust cv og_v3_noloc p2 --weighted
 python -W ignore -m trafficflow.t2.robust_pipeline lgb_v5 \
   --onset train:on_v3:p1:nw:op:0.25:0 --onset train:on_v3:p1:nw:op:0.25:1 --onset train:on_v3:p1:nw:op:0.25:2 --onset lgb_v3:0.25 \
   --ongoing train:og_v3:p2:w:noop:0.35 --ongoing train:og_v3_noloc:p2:w:noop:0.35 --ongoing lgb_v3:0.15 --ongoing rob_noloc_p2w:0.15
+# v6: onset retrained on the corrected (hybrid) truth; ongoing rows = v5 (section 13)
+unset T2_FEAT
+python -W ignore -m trafficflow.t2.truthfix fit
+python -W ignore -m trafficflow.t2.truthfix relabel hybrid
+T2_WORK=/home/user/work/t2h T2_TRUTHQ=/home/user/work/t2/ds_{panel}_y2.npz python -W ignore -m trafficflow.t2.dataset
+T2_WORK=/home/user/work/t2h T2_PHYSICS=1 T2_ONLY=queue_onset T2_FEAT=/home/user/work/t2h/feat python -W ignore -m trafficflow.t2.build_features
+T2_WORK=/home/user/work/t2h T2_FEAT=/home/user/work/t2h/feat python -W ignore -m trafficflow.t2.onset_v6 /home/user/work/t2/lgb_v6.csv

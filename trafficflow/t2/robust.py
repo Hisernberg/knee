@@ -49,7 +49,7 @@ LW = ["lw_s_tail", "lw_s_emp", "lw_s_head", "lw_qu_cap", "lw_qq_cap", "lw_ku_kc"
 VARIANTS.update({
     # feat_v3 tables (T2_FEAT=.../feat_v3): onset rows carry PH, ongoing rows carry LW
     "on_v2": PH + LW, "on_v3": LW,
-    "og_v2": PH + LW, "og_v3": PH, "og_v3_noloc": PH + LOC,
+    "og_v2": PH + LW, "og_v3": PH, "og_v3_noloc": PH + LOC, "og_v2_noloc": PH + LW + LOC,
 })
 SHIFT_THR = (0.05, 0.2)
 

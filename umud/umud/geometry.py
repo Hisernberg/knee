@@ -47,6 +47,12 @@ def _fit(x: np.ndarray, y: np.ndarray, deg: int = 1):
     return c
 
 
+DEEP_RULE = "hybrid"  # "widest" (original), "nearest" (first substantial band below the superficial one),
+# or "hybrid": nearest unless that implies MT < 12 mm (then widest). Nearest matches the superficial-muscle
+# protocol; widest picked a deeper boundary on 3-band images (e.g. MT 40 mm vs ~25 mm).
+HYBRID_MIN_MT_MM = 12.0
+
+
 def find_aponeuroses(apo_prob: np.ndarray, px_per_mm: float, thr: float = 0.5):
     """Return dict with superficial/deep line fits (edges + centre) or None."""
     H, W = apo_prob.shape
@@ -79,7 +85,18 @@ def find_aponeuroses(apo_prob: np.ndarray, px_per_mm: float, thr: float = 0.5):
     below = [b for b in bands[1:] if b["ymid"] - sup["ymid"] >= 5 * px_per_mm]
     if not below:
         return None
-    deep = max(below, key=lambda b: b["span"] * 1.0 + 0.0 * b["mass"])
+    widest = max(below, key=lambda b: b["span"])
+    wide = [b for b in below if b["span"] >= 0.4 * W] or below
+    nearest = min(wide, key=lambda b: b["ymid"])
+    if DEEP_RULE == "nearest":
+        deep = nearest
+    elif DEEP_RULE == "hybrid":
+        top = nearest["top"] if nearest["top"] is not None else nearest["cen"]
+        bot = sup["bot"] if sup["bot"] is not None else sup["cen"]
+        inner_mm = (np.polyval(top, W / 2) - np.polyval(bot, W / 2)) / px_per_mm
+        deep = nearest if inner_mm >= HYBRID_MIN_MT_MM else widest
+    else:
+        deep = widest
     return dict(sup=sup, deep=deep, n_bands=len(bands), W=W, H=H)
 
 

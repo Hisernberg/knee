@@ -91,3 +91,18 @@ Prepared: `submissions/s11_Aft_pipeline.csv` (re-runnable) and `submissions/s12_
 
 PA is optimal near 0.6 (quadratic fit ≈ 0.56) and FL near 0.3. MT is still improving at 0.75, consistent with the OSF
 benchmark (pipeline MT 0.50 mm vs DLTrack 1.03 mm), so next is MT 0.9 / 1.0.
+
+## Day-4 review: mistakes found in the best blends
+1. **Pipeline failures blended as prior constants.** IMG_00189/190 had no aponeurosis pair, so shot A filled the prior
+   (PA 17 / FL 80 / MT 21, then smoothed) and every C-blend mixed it in. `blend_v2.py` now uses the reference there.
+2. **Wrong deep aponeurosis on 3-band images.** The "widest band" rule picked a deeper boundary: IMG_00121–125 got
+   MT 40.2 mm (reference 25.0) and FL ≈ 187 mm. New `geometry.DEEP_RULE = "hybrid"`: the nearest substantial band
+   below the superficial aponeurosis (the protocol for superficial muscles), falling back to the widest band when
+   the nearest implies an inner-edge MT < 12 mm. On 3-band images the MT disagreement drops 2.54 → 1.50 mm and FL 14.9 → 10.4 mm.
+   Only IMG_00121–125 change on the test set. In C9 those rows had MT ≈ 36 mm; now ≈ 24.6 mm.
+3. **Additive decomposition of the leaderboard.** The score is a sum over targets, so the differences between
+   C3–C9 isolate each target's curve: optimum PA weight ≈ 0.56, FL ≈ 0.27 (≈ 0.0004 gain each), MT still decreasing at 0.75.
+4. Linear blending passes pipeline outliers through (FL |A−V| 99th pct 85 mm); `--clip-*` gives a Huber-style option.
+
+Prepared (`submissions/d4_*.csv`): S1 fixed (hybrid pipeline, failures → ref, w .56/.27/.75), S2 MT 1.0 (clip 4 mm),
+S2b MT 0.9, S3 FL clip 15 mm, S4 PA offset 0.8, and F (old pipeline with only the failure fix, as a fallback).

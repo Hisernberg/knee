@@ -72,6 +72,8 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-24 12:11 | **S3 D2** `D2_gate06a75_t2v6.zip` | D1 with gate split a = 0.75 (266,914 dense-traffic state rows) | **0.86492** | 14/158 overall, **8/128 post-rebuild** | +0.00064 vs D1, **exactly the local prediction (+0.0006)**. Base → D2; post-rebuild top 0.88318 |
 | 2026-09-24 14:40 | **S4 E1** `E1_fd_gate06a75_t2v6.zip` | D2 with Task 1 state from the FD-feature models `full3` (state rows only) | **0.86591** | 14/160 overall, **8/130 post-rebuild** | +0.00099 vs D2 (local +0.0012). Base → E1; post-rebuild top 0.88318 |
 | 2026-09-24 14:42 | **S5 P4** probe `P4_E1_onset_zeroed.zip` | E1 with onset windows zeroed (311 cells) | 0.75669 | – | **onset = 2·(E1 − P4)/0.30 = 0.728** on March (A: 0.686) |
+| 2026-09-25 08:18 | **F1** probe `F1_onsetb05.zip` | E1 with the v6 onset re-decoded at logit bias +0.5 (+15 onset cells; 12 in 8 validation windows) | 0.86356 | – | −0.00235 → **March onset −0.016**: larger onset sets hurt |
+| 2026-09-25 08:44 | **F2** `F2_onset_site2.zip` | E1 with the onset decoded by `site2_lo.05_r.5` (commit to 1–2 sites; −11 hedge cells, 9 in 7 validation windows) | 0.86418 | 9/140 post-rebuild (E1) | −0.00173 → **March onset −0.012**: fewer hedges hurt too. Base stays E1 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |
@@ -197,3 +199,33 @@ The ongoing retrain on corrected labels (v7) was rejected: +0.0006 in the conser
 **Next lever: onset.**
 - March onset is 0.728, against about 0.76 in CV (old truth) and about 0.86 (corrected truth), so March onsets transfer worst. Diagnose March onset windows next (site recurrence, time of day, incident-like sites) with history-only features.
 - Each +0.1 onset is worth +0.015 total. The gap to the leader is 0.0173.
+
+## Decoding calibration (2026-09-25)
+**Onset, v6 hybrid OOF on re-drawn windows** (`python -m trafficflow.t2.calib cv` / `decoders`, T2_WORK=t2h):
+
+| logit bias b | hybrid sim | hybrid off | old sim | old off | rec<0.05 | rec<0.2 | cells/window |
+|---|---|---|---|---|---|---|---|
+| −0.5 | 0.8563 | 0.8841 | 0.7844 | 0.7943 | 0.394 | 0.691 | 3.92 |
+| **0 (v6)** | **0.8589** | 0.8841 | **0.7871** | 0.7943 | 0.412 | 0.704 | 4.00 |
+| +0.25 | 0.8594 | 0.8841 | 0.7869 | 0.7943 | 0.418 | 0.707 | 4.04 |
+| +0.5 | 0.8588 | 0.8928 | 0.7862 | 0.8038 | 0.419 | 0.707 | 4.07 |
+| +1.0 | 0.8554 | 0.8970 | 0.7824 | 0.8088 | 0.434 | 0.713 | 4.16 |
+
+- Site-commit decoders cost −0.001 to −0.002. `site2_lo.05_r.5` is −0.0010 ± 0.0012 hybrid and −0.0009 ± 0.0011 old (paired, 94 windows changed: 44 better, 50 worse).
+- The contiguous-range and anchor decoders lose heavily (0.795 and 0.562 hybrid).
+
+**On the LB, both directions lose on March:**
+- b = +0.5 adds hedge cells: onset −0.016.
+- `site2` removes them: onset −0.012.
+- **Conclusion:** the v6 top-m decoder at b = 0 is at the March optimum. Onset gains have to come from better probabilities.
+- The added cells were mostly extra sites in uncertain windows (D12_I5_N, D12_I5_S, D7_I405_S). Removing the model's own hedges also hurts, so the hedges it picks do hit.
+
+**Ongoing, v5 blend OOF, original windows, old truth** (`calib cv_ongoing`):
+
+| b | −0.5 | −0.25 | **0** | +0.25 | +0.5 | +1.0 |
+|---|---|---|---|---|---|---|
+| sim | 0.8797 | 0.8827 | **0.8833** | 0.8820 | 0.8788 | 0.8659 |
+| off | 0.8790 | 0.8866 | 0.8906 | 0.8950 | 0.8960 | 0.8889 |
+
+- The official train windows prefer larger sets for both conditions. That preference did not transfer to the LB for onset, so it is an artefact of our truth on those windows (5-minute selector shifts), not a property of the official truth.
+- No ongoing bias probe was spent.

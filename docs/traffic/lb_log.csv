@@ -1,0 +1,3 @@
+utc,file,kind,status,public,best_before,delta,message
+2026-09-25 08:12,F1_onsetb05.zip,probe,COMPLETE,0.86356,0.86591,-0.00235,"S1/F1 probe: E1 with v6 onset re-decoded at logit bias +0.5 (15 onset cells, 12 in validation); calibration direction test"
+2026-09-25 08:19,F2_onset_site2.zip,candidate,COMPLETE,0.86418,0.86591,-0.00173,"S2/F2: E1 with v6 onset decoded by site2 (commit to 1-2 sites; 11 hedge cells removed, 9 in validation); CV -0.0010+-0.0012; mirror of S1"

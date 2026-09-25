@@ -1,4 +1,4 @@
-# Kraggle3in1 — Kaggle competition workspace
+# kraggle-3-in-one — Kaggle competition workspace
 
 One repository, one self-contained folder per competition. Code, configs, docs and submissions of a
 competition live only inside its folder; nothing is shared across folders.

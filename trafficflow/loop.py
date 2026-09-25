@@ -13,6 +13,7 @@ refuses:
     python -m trafficflow.loop diff A.zip B.zip      # changed rows per task
     python -m trafficflow.loop submit X.zip -m MSG [--probe] [--dry-run]
     python -m trafficflow.loop rank
+    python -m trafficflow.loop backup [EXTRA_GLOB ...]   # new version of the private dataset <user>/tfb-work
 """
 from __future__ import annotations
 
@@ -242,9 +243,54 @@ def rank():
     return out
 
 
+BACKUP = Path("/home/user/backup/tfb-work")
+BACKUP_GLOBS = ["/home/user/work/t1/pred/state_full3.parquet", "/home/user/work/t1/models/full3/*",
+                "/home/user/work/t2/lgb_v6.csv", "/home/user/work/t2/probs_lgb_v5.parquet",
+                "/home/user/work/t2h/probs_v6_onset.parquet", "/home/user/work/t2h/model_v6_*_queue_onset.txt",
+                "/home/user/work/t4/t4_l2proj.csv", "/home/user/research/lb/lb_with_era.csv"]
+
+
+def backup(extra: list[str]):
+    """New version of the private Kaggle dataset <user>/tfb-work with the submission-critical files
+    (flat names, manifest.json maps them back). Hard links, so staging costs no disk."""
+    import glob
+    a = api()
+    user = a.get_config_value("username")
+    if BACKUP.exists():
+        shutil.rmtree(BACKUP)
+    BACKUP.mkdir(parents=True)
+    subs = submissions(a)
+    b = best(subs)
+    files = [str(SUBS / b["file"])] if b and (SUBS / b["file"]).exists() else []
+    for g in BACKUP_GLOBS + list(extra):
+        files += sorted(glob.glob(g))
+    manifest = {}
+    for f in files:
+        name = f.replace("/home/user/", "").replace("/", "__")
+        os.link(f, BACKUP / name)
+        manifest[name] = f
+    json.dump(manifest, open(BACKUP / "manifest.json", "w"), indent=1)
+    json.dump({"title": "tfb-work", "id": f"{user}/tfb-work", "licenses": [{"name": "CC0-1.0"}]},
+              open(BACKUP / "dataset-metadata.json", "w"))
+    size = sum((BACKUP / n).stat().st_size for n in manifest) / 1e6
+    try:
+        a.dataset_status(f"{user}/tfb-work")
+        exists = True
+    except Exception:
+        exists = False
+    note = f"{utcnow():%Y-%m-%d %H:%M} best={b and b['file']} {b and b['public']}"
+    if exists:
+        a.dataset_create_version(str(BACKUP), note, quiet=True, convert_to_csv=False, delete_old_versions=True)
+    else:
+        a.dataset_create_new(str(BACKUP), public=False, quiet=True, convert_to_csv=False)
+    shutil.rmtree(BACKUP)
+    print(json.dumps({"dataset": f"{user}/tfb-work (private)", "new": not exists, "files": len(manifest),
+                      "mb": round(size, 1), "note": note}, indent=1))
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "pack", "diff", "submit", "rank"])
+    ap.add_argument("cmd", choices=["status", "pack", "diff", "submit", "rank", "backup"])
     ap.add_argument("files", nargs="*")
     ap.add_argument("-m", "--message", default="")
     ap.add_argument("--probe", action="store_true")
@@ -262,3 +308,5 @@ if __name__ == "__main__":
         submit(a.files[0], a.message, a.probe, a.dry_run)
     elif a.cmd == "rank":
         rank()
+    elif a.cmd == "backup":
+        backup(a.files)

@@ -40,7 +40,8 @@ Background agents and jobs wake the session when they finish, so work continues 
    Send one push notification a day, once the day's submissions are done.
 8. Launch the next experiments: at most 2 LightGBM jobs at once, 2 threads each (4 cores, 15 GB).
    Keep at least 2.5 GB of disk free. Agents never submit or commit.
-9. Once a day (evening sweep), back up the artefacts (**Backup** below).
+9. Once a day (evening sweep), back up the artefacts: `python3 -m trafficflow.loop backup`
+   (**Backup** below).
 
 ## Current best
 **`E1_fd_gate06a75_t2v6.zip` = 0.86591** (2026-09-24). Post-rebuild rank 9 of 140 on 2026-09-25; #1 is 0.88849.
@@ -125,7 +126,9 @@ Closed:
 - After the deadline, delete the Routines and send the final report.
 
 ## Backup (daily, evening sweep)
-Private Kaggle dataset `kragglenote2forwork/tfb-work`, one new version a day, holding:
+`python3 -m trafficflow.loop backup [EXTRA_GLOB ...]` creates a new version of the private Kaggle
+dataset `kragglenote2forwork/tfb-work`, replacing the old one. The first version (2026-09-25) holds
+18 files, 482 MB:
 - the best zip;
 - `work/t1/pred/state_full3.parquet` and `work/t1/models/full3/`;
 - `work/t2/lgb_v6.csv`, `work/t2/probs_lgb_v5.parquet`, `work/t2h/probs_v6_onset.parquet` and
@@ -142,7 +145,9 @@ Private Kaggle dataset `kragglenote2forwork/tfb-work`, one new version a day, ho
    task4, submission_key.csv, sample_submission.csv).
 3. **Caches.** `python3 -m trafficflow.data` rebuilds `/home/user/cache/<panel>.npz`.
 4. **Artefacts.** `kaggle datasets download kragglenote2forwork/tfb-work -p /home/user/work/restore --unzip`,
-   then move the files back to the paths above. Submissions can resume from here.
+   then move each file back to its path in `manifest.json`. Kaggle unpacks the best zip into a
+   folder, so re-zip that CSV with `loop pack` (copy the checks.json from git history or rebuild).
+   Submissions can resume from here.
 5. **Research state (hours, in the background):**
    - Task 2: `trafficflow/t2/run_all.sh`;
    - Task 1: `trafficflow/t1_pipeline.py` stages (`TFB_FD=1`).

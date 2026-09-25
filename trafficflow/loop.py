@@ -92,6 +92,17 @@ def best(subs: list[dict]) -> dict | None:
     return max(done, key=lambda s: s["public"]) if done else None
 
 
+def forum(n: int = 3) -> list[str]:
+    """Newest discussion topics (organizer announcements can change the rules or the data)."""
+    import subprocess
+    try:
+        out = subprocess.run(["kaggle", "competitions", "topics", "list", COMP], capture_output=True, text=True,
+                             timeout=60).stdout.splitlines()[2:2 + n]
+        return [" ".join(line.split()) for line in out]
+    except Exception as e:                      # the forum is informational only
+        return [f"unavailable: {e}"]
+
+
 # ---------------------------------------------------------------------------- commands
 def status():
     now = utcnow()
@@ -107,6 +118,7 @@ def status():
                     pending=[s["file"] for s in subs if s["status"] not in ("COMPLETE", "ERROR")],
                     best={"file": b["file"], "public": b["public"], "date": str(b["date"])[:16]} if b else None,
                     today=[{"file": s["file"], "status": s["status"], "public": s["public"]} for s in t])
+        info["forum_latest"] = forum(3)
     print(json.dumps(info, indent=1))
     return info
 

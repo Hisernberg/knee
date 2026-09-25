@@ -3,8 +3,11 @@
 python -m trafficflow.t1_smooth_eval cache <panels>   hold3 predictions on the full-coverage holdout
                                                         (realistic blackouts, same protocol as the hold3
                                                         J check) -> WORK/smooth/hold3_<panel>.npz
-python -m trafficflow.t1_smooth_eval share <panels>   baseline LWR error share by cell type
-python -m trafficflow.t1_smooth_eval grid <panels>    J / S_state / LWR for the variant grid
+python -m trafficflow.t1_smooth_eval share <panels>   LWR error share by cell type (baseline) and the
+                                                        change with the adopted smoothing
+python -m trafficflow.t1_smooth_eval grid <panels>    J / S_state / LWR per panel: smoothing variants and
+                                                        the gate x recon-split grid (with / without smoothing)
+Panels default to the four holdout panels; results go to WORK/smooth/*.csv.
 
 Scoring is exact on the holdout window (verified against evaluate.s_lwr_proxy): only transitions
 that touch a predicted cell carry error, so the numerator is summed over those only.
@@ -26,12 +29,13 @@ NTR_DAY = 273
 HOLD_PANELS = ["D12_I5_S", "D7_I10_W", "D7_I405_S", "D12_I405_N"]
 
 
-def cache(panel: str):
+def cache(panel: str, out=None):
     import lightgbm as lgb
     from .evaluate import link_ramp_validity
     from .t1 import Panel
     from .t1_pipeline import add_fd, base_of
-    out = WORK / "smooth"; out.mkdir(parents=True, exist_ok=True)
+    out = WORK / "smooth" if out is None else out
+    out.mkdir(parents=True, exist_ok=True)
     f = out / f"hold3_{panel}.npz"
     if f.exists():
         return

@@ -74,6 +74,7 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-24 14:42 | **S5 P4** probe `P4_E1_onset_zeroed.zip` | E1 with onset windows zeroed (311 cells) | 0.75669 | – | **onset = 2·(E1 − P4)/0.30 = 0.728** on March (A: 0.686) |
 | 2026-09-25 08:18 | **F1** probe `F1_onsetb05.zip` | E1 with the v6 onset re-decoded at logit bias +0.5 (+15 onset cells; 12 in 8 validation windows) | 0.86356 | – | −0.00235 → **March onset −0.016**: larger onset sets hurt |
 | 2026-09-25 08:44 | **F2** `F2_onset_site2.zip` | E1 with the onset decoded by `site2_lo.05_r.5` (commit to 1–2 sites; −11 hedge cells, 9 in 7 validation windows) | 0.86418 | 9/140 post-rebuild (E1) | −0.00173 → **March onset −0.012**: fewer hedges hurt too. Base stays E1 |
+| 2026-09-25 09:44 | **G1** `G1_tvsmooth.zip` | E1 + TV smoothing of the density inside runs of target cells (5.1M state rows, mean \|Δv\| 0.0066 km/h, \|Δq\| 11 veh/h) | **0.86651** | 9/140 post-rebuild | **+0.00060, exactly the local J prediction (+0.00062).** Base → G1 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |
@@ -229,3 +230,29 @@ The ongoing retrain on corrected labels (v7) was rejected: +0.0006 in the conser
 
 - The official train windows prefer larger sets for both conditions. That preference did not transfer to the LB for onset, so it is an artefact of our truth on those windows (5-minute selector shifts), not a property of the official truth.
 - No ongoing bias probe was spent.
+
+## Task 3: TV density smoothing (2026-09-25, agent; details in docs/traffic/T3_SMOOTHING.md)
+**The method:**
+- Total-variation smoothing of the per-lane density k = q/v inside each run of consecutive target cells on a link. Small increments inside a run are set to zero; queue fronts are kept.
+- The threshold is τ × the run's mean density: free-flow 0.0075, gate (v < 0.6·v_f) 0.02, blackout 0.05. Weak L1 anchors tie the run ends to the observed neighbours.
+- Outside the gate only the flow moves; inside it, the a = 0.75 split applies.
+
+**Holdout J with hold3, gate 0.6, a 0.75:**
+
+| | D12_I5_S | D7_I10_W | D7_I405_S | D12_I405_N | mean ΔJ |
+|---|---|---|---|---|---|
+| baseline J | 0.38810 | 0.38862 | 0.38215 | 0.39293 | |
+| TV J | 0.38877 | 0.38930 | 0.38262 | 0.39358 | **+0.00062 (4/4)** |
+| LWR baseline → TV | 0.6068 → 0.6132 | 0.5905 → 0.5967 | 0.5985 → 0.6032 | 0.6055 → 0.6116 | +0.0058 |
+
+- Parameters were chosen on 2 panels and confirmed on the other 2.
+- Quadratic smoothing gives +0.00018. Moving speed instead of flow gives +0.00021. Density blends are negative.
+- Gate 0.7 adds +0.00004 (noise); a = 1.0 fails.
+
+**Where the LWR loss sits (baseline):**
+- isolated target cells 46–48%;
+- runs of 2–3 cells 36–38%;
+- runs of 4+ cells 9–10%;
+- blackout runs 5–9%.
+
+Only the within-run transitions (about 29% of the loss) can be smoothed. **LB: G1 +0.00060 against the local +0.00062.**

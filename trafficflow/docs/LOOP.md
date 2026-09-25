@@ -106,10 +106,15 @@ ongoing ≈ 0.840).
 - a blind resubmission after an ERROR.
 
 ## Candidate queue
-| ID | Change vs best | Local evidence | Status |
-|---|---|---|---|
-| H1 (26 Sep, 00:07) | G2 + ongoing v10 `og_shrink08_rec05`: stage 2 may only remove v5 cells, only where recurrence ≥ 0.05. Removes 35 validation cells in 10 windows (42 private cells in 16 windows), all of them G3 removals. Build with `--queue /home/user/work/t2/lgb_v10_og_shrink08_rec05.csv` | plain +0.0029 ± 0.0005 old / +0.0023 hybrid; validation-weighted +0.0049 ± 0.0010; private-weighted +0.0035 ± 0.0006; footprint clean on both months | **probe-candidate.** Adopt if Δ ≥ +0.0005. If Δ ≤ −0.0006 (ongoing ≤ −0.004), drop the ongoing stack line entirely, final pick included |
-| H2 (26 Sep, 00:07) | G2 with Task 1 state = mean of full3 and full4, the seed ensemble (`--state-tag ens34`; built as `/home/user/work/subs/H2_t1ens34.zip` once the full4 prediction finishes) | holdout J +0.00077, 4/4 panels (+0.00063 to +0.00092; T1_ENSEMBLE.md) | **candidate.** Expected about +0.0008; adopt if Δ ≥ +0.0005 |
+**Chain for 2026-09-26 00:07.** All files are pre-built in `/home/user/work/subs`, each with 65/65 checks and a single-factor diff.
+1. **H2** `H2_t1ens34.zip` (against G2; state rows only): Task 1 state = mean of full3 and full4, the seed ensemble (`--state-tag ens34`).
+   - Evidence: holdout J +0.00077 on 4/4 panels (T1_ENSEMBLE.md).
+   - Expected about +0.0008; adopt if Δ ≥ +0.0005.
+2. **H1** (ongoing v10 `og_shrink08_rec05`: stage 2 may only remove v5 cells, only where recurrence ≥ 0.05; 77 ongoing cells, 35 of them in validation).
+   - Which file: if H2 was adopted, submit `H1b_og_shrink_on_ens34.zip` (against H2). Otherwise submit `H1_og_shrink.zip` (against G2).
+   - Evidence: plain +0.0029 ± 0.0005; validation-weighted +0.0049 ± 0.0010; private-weighted +0.0035 ± 0.0006; footprint clean.
+   - Adopt if Δ ≥ +0.0005. If Δ ≤ −0.0006 (ongoing ≤ −0.004), drop the ongoing stack line entirely, final pick included.
+3. **Slots 3–5.** No validated candidates while agents are paused. Use a slot only for a probe that answers an open question. One option: the current best with the queue zeroed, which pins the exact March S_queue and ongoing level. Otherwise leave the slots unused.
 
 ## Decision log
 | Date | Submission | Public (Δ vs best) | Decision / lesson |

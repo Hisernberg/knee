@@ -2,3 +2,4 @@ utc,file,kind,status,public,best_before,delta,message
 2026-09-25 08:12,F1_onsetb05.zip,probe,COMPLETE,0.86356,0.86591,-0.00235,"S1/F1 probe: E1 with v6 onset re-decoded at logit bias +0.5 (15 onset cells, 12 in validation); calibration direction test"
 2026-09-25 08:19,F2_onset_site2.zip,candidate,COMPLETE,0.86418,0.86591,-0.00173,"S2/F2: E1 with v6 onset decoded by site2 (commit to 1-2 sites; 11 hedge cells removed, 9 in validation); CV -0.0010+-0.0012; mirror of S1"
 2026-09-25 08:47,G1_tvsmooth.zip,candidate,COMPLETE,0.86651,0.86591,0.0006,"S3/G1: E1 + TV density smoothing inside runs of target cells (Task 3 dN-aware; holdout J +0.00062 on 4/4 panels, expected LB ~+0.0006); state rows only"
+2026-09-25 08:58,G2_onset_v8stack.zip,candidate,COMPLETE,0.86711,0.86651,0.0006,"S4/G2: G1 with onset = v8 seeds9_stack03 (stage-2 stacking 0.3 + 9-seed mix, hybrid labels); CV onset +0.0035+-0.0011 hyb / +0.0024+-0.0012 old; 15 onset cells (11 in 4 validation windows)"

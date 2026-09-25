@@ -30,7 +30,8 @@ from .onset_eval import V6, OnsetEval, table
 
 def mean_oof(files: list[str], weights: list[float], tag: str) -> str:
     """Weighted mean of OOF files (same rows) written to WORK/oof_queue_onset_mean_<tag>.parquet
-    (``stack.build`` averages its files with equal weights). Returns the file name."""
+    (``stack.build`` averages its files with equal weights). Returns the file name; callers
+    delete the file after ``stack.build``."""
     B = None
     for f, w in zip(files, weights):
         x = pd.read_parquet(WORK / f)
@@ -47,9 +48,10 @@ def mean_oof(files: list[str], weights: list[float], tag: str) -> str:
 def stage2_oof(files: list[str], extra=False, seeds=(0,), rounds=300, leaves=31, min_data=100, lr=0.05,
                weights: list[float] | None = None, tag: str = "tmp"):
     stack.EXTRA = extra
-    if weights is not None and len(set(weights)) > 1:
-        files = [mean_oof(files, weights, tag)]
-    X, cols = stack.build(files)
+    tmp = mean_oof(files, weights, tag) if weights is not None and len(set(weights)) > 1 else None
+    X, cols = stack.build([tmp] if tmp else files)
+    if tmp:
+        (WORK / tmp).unlink()
     p2 = np.zeros(len(X))
     for s in seeds:
         p2 += stack.cv(X, cols, {**stack.P2, "num_leaves": leaves, "min_data_in_leaf": min_data,

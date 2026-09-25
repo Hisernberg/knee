@@ -83,9 +83,10 @@ def stage2_models(specs, seeds, rounds=300, leaves=31, name="tmp") -> tuple[list
     stack.EXTRA = False
     files = [oof_file(v, s) for v, s, _ in specs]
     weights = [w for _, _, w in specs]
-    if len(set(weights)) > 1:
-        files = [mean_oof(files, weights, f"v8_{name}")]
-    X, cols = stack.build(files)
+    tmp = mean_oof(files, weights, f"v8_{name}") if len(set(weights)) > 1 else None
+    X, cols = stack.build([tmp] if tmp else files)
+    if tmp:
+        (WORK / tmp).unlink()
     ds = lgb.Dataset(X[cols].to_numpy(np.float32), X.y.to_numpy(np.float32), feature_name=cols).construct()
     del X; gc.collect()
     ms = [lgb.train({**stack.P2, "num_leaves": leaves, "seed": s}, ds, rounds) for s in seeds]

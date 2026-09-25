@@ -732,3 +732,299 @@ recommended file.
 * `ongoing_v7.py`: the v7 builder, ready but not run.
 * Tables: `/home/user/work/t2h/feat_og` (re-drawn-window ongoing features,
   ~1 GB). Delete it if disk is needed.
+
+## 15. Onset stage-2 stacking and more seeds on the hybrid truth (`lgb_v8_*`)
+
+**Goal.** A single-factor onset change on top of `lgb_v6`. On the public
+month, truth-consistent onset changes transfer strongly: the v6 label fix
+gave onset +0.030 on March where CV said +0.005 to +0.012 (March onset is
+now 0.728).
+
+**Gate** (the coordinator's rule for sending a Task 2 candidate to the
+leaderboard):
+* onset sim under the hybrid truth improves on v6;
+* the conservative evaluation (old truth, re-drawn windows) is not negative;
+* the non-recurrent slices (recur < 0.05, recur < 0.2) are not worse by more
+  than noise.
+
+### Evaluator (`onset_eval.py`)
+
+`OnsetEval` scores any probability vector aligned to the rows of the v6 onset
+OOF files. Those rows cover all 4,583 onset windows × links at T+30
+(`T2_OOF_ALL=1`). Scoring uses the 2,081 re-drawn sim windows and the 40
+official windows:
+* **Decoding:** top-m expected IoU per window.
+* **Truths:** `hybrid` (`ds_<p>.npz["y"]`) and `old` (`y_old`). Steps 1-5
+  are empty under both, as in `robust.load_truth`.
+* **Scores:** official aggregation for sim and off. The recurrence slices are
+  plain means. They use `robust.onset_recurrence` on the t2h tables, which is
+  based on the hybrid truth, so both truths use the same 144 / 438 windows.
+* **`compare(a, b)`:** paired bootstrap of Δ sim by window. It resamples the
+  sim windows jointly (2,000 replicates, as `og_labelfix_eval` does). It also
+  reports Δ off, Δ and SE of the slices, and the number of windows better /
+  worse.
+* **`stack_v8.nested_weight`:** picks the blend weight on three week folds
+  and scores it on the fourth. This gives an honest estimate of a tuned
+  weight.
+
+**Reproducing section 13** (v6 = mean of its four OOF files):
+
+| truth | sim | off | rec<0.05 | rec<0.2 |
+|---|---:|---:|---:|---:|
+| hybrid (section 13: 0.8589 / 0.8841 / 0.412 / 0.704) | 0.8589 | 0.8841 | 0.412 | 0.704 |
+| old, steps 1-5 kept (section 13: 0.7605 / 0.7659 / 0.374 / 0.641) | 0.7605 | 0.7659 | 0.374 | 0.641 |
+| **old, steps 1-5 empty (used from here on)** | **0.7871** | **0.7943** | **0.383** | **0.661** |
+
+* Every section 13 number is reproduced exactly.
+* **Why the old-truth rows differ.** The section 13 old-truth row kept the
+  old truth's steps 1-5. Of the 2,081 re-drawn sim windows (drawn on the
+  hybrid truth), 261 have old-truth queue cells at T+5..T+25. A T+30-only
+  forecast can never hit those cells. The hybrid truth has such cells in 41
+  windows, and those are emptied.
+* With steps 1-5 empty (as for the hybrid truth, and as onset truth is
+  defined), v6 scores 0.7871 / 0.7943 under the old truth.
+* Section 13's slices used the hybrid-truth recurrence for both truths. That
+  is kept here.
+* `OnsetEval(truths=ALL_TRUTHS)` adds the section 13 convention as `old_e`.
+
+### Stage-2 stacking on the v6 OOF (`stack_v8.py`)
+
+**Setup.**
+* This is `stack.py` (section 13) on the t2h OOF.
+* Stage 1 is the mean of v6's four OOF files. Stage 2 is LightGBM on the
+  window's stage-1 probability profile (26 features, traffic direction).
+* It is trained on the hybrid labels of every onset window (cand, sim and
+  off), with the same 4 week folds (OOF stacking).
+* Final probability = `w × stage 2 + (1 − w) × stage 1`, then top-m decoding.
+* Default stage 2: 31 leaves, min_data 100, lr 0.05, 300 rounds.
+
+Stage 2 bagged over 3 seeds, by blend weight (Δ vs v6 ± paired-bootstrap SE):
+
+| w | hybrid sim | Δ | old sim | Δ | hybrid rec<0.05 / rec<0.2 | old rec<0.05 / rec<0.2 |
+|---|---:|---:|---:|---:|---|---|
+| 0 (v6) | 0.8589 | | 0.7871 | | 0.412 / 0.704 | 0.383 / 0.661 |
+| 0.2 | 0.8610 | +0.0022 ± 0.0009 | 0.7878 | +0.0008 ± 0.0008 | 0.433 / 0.713 | 0.394 / 0.667 |
+| **0.3** | **0.8620** | **+0.0031 ± 0.0011** | **0.7887** | **+0.0016 ± 0.0011** | **0.431 / 0.713** | **0.393 / 0.667** |
+| 0.4 | 0.8616 | +0.0027 ± 0.0013 | 0.7882 | +0.0011 ± 0.0013 | 0.430 / 0.713 | 0.393 / 0.668 |
+| 0.5 | 0.8590 | +0.0001 ± 0.0017 | 0.7853 | −0.0017 ± 0.0016 | 0.430 / 0.714 | 0.390 / 0.666 |
+| 0.7 | 0.8567 | −0.0022 ± 0.0020 | 0.7828 | −0.0043 ± 0.0020 | 0.429 / 0.710 | 0.389 / 0.662 |
+| 1 (stage 2 alone) | 0.8511 | −0.0077 ± 0.0025 | 0.7786 | −0.0085 ± 0.0026 | 0.433 / 0.706 | 0.392 / 0.657 |
+
+Stage-2 variants at w = 0.3, and with the weight chosen out of fold (nested):
+
+| stage 2 | hybrid Δ | old Δ | nested hybrid Δ | nested old Δ | weights chosen per fold |
+|---|---:|---:|---:|---:|---|
+| 1 seed | +0.0031 ± 0.0012 | +0.0014 ± 0.0011 | +0.0024 ± 0.0014 | +0.0006 ± 0.0013 | 0.4 / 0.3 / 0.3 / 0.3 |
+| **3 seeds (bagged)** | **+0.0031 ± 0.0011** | **+0.0016 ± 0.0011** | **+0.0025 ± 0.0013** | **+0.0010 ± 0.0012** | 0.4 / 0.3 / 0.3 / 0.3 |
+| 3 seeds, 150 rounds | +0.0029 ± 0.0011 | +0.0018 ± 0.0010 | +0.0029 ± 0.0011 | +0.0018 ± 0.0010 | 0.3 everywhere |
+| 3 seeds, 15 leaves, min_data 200 | +0.0023 ± 0.0010 | +0.0012 ± 0.0010 | +0.0013 ± 0.0010 | +0.0004 ± 0.0010 | 0.4 / 0.2 / 0.3 / 0.2 |
+| 3 seeds, + link features and location prior (`T2_STACK_EXTRA`) | +0.0018 ± 0.0011 | +0.0008 ± 0.0009 | −0.0004 ± 0.0014 | −0.0018 ± 0.0014 | 0.7 / 0.2 / 0.3 / 0.2 |
+
+**What stage 2 does here.**
+* Stage 2 alone loses (−0.008). On v5 / old labels it lost −0.003 and the
+  best weight was 0.5; on the hybrid OOF the best weight is 0.3.
+* **Calibration.** Stage 1 (the v6 mean) is overconfident at the top
+  (predicted 0.991 → observed 0.966) and underconfident in the middle (0.10 →
+  0.20, 0.29 → 0.41). Stage 2 is calibrated (0.094 → 0.090, 0.98 → 0.97).
+* **The gain is not a calibration shift.** A logit bias on v6 does not
+  reproduce it:
+
+  | logit bias b | −0.25 | 0 | +0.25 | +0.5 | +0.75 | +1.0 |
+  |---|---:|---:|---:|---:|---:|---:|
+  | v6 + b, hybrid Δ | −0.0014 | 0 | +0.0005 | −0.0001 | −0.0024 | −0.0034 |
+  | v6 + b, old Δ | −0.0014 | 0 | −0.0001 | −0.0009 | −0.0035 | −0.0047 |
+  | stack w=0.3 + b, hybrid Δ | +0.0020 | **+0.0031** | +0.0004 | −0.0016 | −0.0038 | −0.0088 |
+  | stack w=0.3 + b, old Δ | +0.0005 | **+0.0016** | −0.0009 | −0.0031 | −0.0055 | −0.0103 |
+  | v6 + b, off hybrid / old | 0.8841 / 0.7943 | 0.8841 / 0.7943 | 0.8841 / 0.7943 | 0.8928 / 0.8038 | 0.8945 / 0.8060 | 0.8970 / 0.8088 |
+  | stack + b, off hybrid / old | 0.8841 / 0.7943 | 0.8897 / 0.8006 | 0.8925 / 0.8037 | 0.8952 / 0.8068 | 0.9001 / 0.8119 | 0.8995 / 0.8068 |
+
+  (Δ is against plain v6. The sim-window optimum of the stacked blend is at
+  b = 0. On the 40 official windows a positive bias helps both, by about
+  +0.01.)
+* **Where it gains.** The gain comes from windows where stage 1 is unsure;
+  confident windows are unchanged. By the window's stage-1 maximum
+  probability (sim windows, plain mean Δ):
+
+  | stage-1 max p | windows | v6 IoU (hybrid) | Δ hybrid | Δ old | validation / private windows |
+  |---|---:|---:|---:|---:|---|
+  | ≤ 0.5 | 64 | 0.238 | +0.051 | +0.025 | 5 / 2 |
+  | 0.5-0.8 | 64 | 0.543 | +0.016 | +0.018 | 6 / 3 |
+  | 0.8-0.95 | 195 | 0.754 | +0.000 | −0.002 | 4 / 2 |
+  | > 0.95 | 1,758 | 0.914 | +0.001 | +0.000 | 25 / 33 |
+
+  Stage 2 mostly extends a low-confidence scatter into the adjacent block
+  (e.g. links 104, 107, 153 → 103-107, 153).
+* **Validation and private have more of these windows** (the March shift,
+  sections 8 and 11). The stage-1 maximum probability averages 0.82 on
+  validation and 0.92 on private, against 0.95 on CV sim windows. Reweighting
+  the per-bucket gains to the validation mix gives about +0.009 (hybrid) /
+  +0.006 (old), and +0.004 for private. These are plain means over few
+  windows, so they are only indicative.
+* **Stability.**
+  * By week fold, Δ hybrid is +0.0008 / +0.0027 / +0.0037 / +0.0050 and Δ old
+    is +0.0000 / +0.0016 / +0.0010 / +0.0038.
+  * By panel, Δ hybrid is ≥ 0 on 7 of 8 panels: D7_I10_W +0.011, D12_I5_S
+    +0.007, D7_I405_N +0.005, D12_I5_N +0.004, D7_I210_W +0.002, D7_I210_E
+    +0.001, D7_I10_E 0. D7_I405_S is −0.005, where two sites often break down
+    at once.
+* **Other checks.** An exact expected-IoU decoder was tried on v6. It uses
+  Poisson-binomial sums over independent cells in place of the ratio of
+  expectations. It is worse: −0.0014 ± 0.0009 hybrid, −0.0020 ± 0.0008 old.
+  The cells are correlated within a block. The top-m ratio decoder stays.
+
+### More seeds (same recipe, hybrid labels)
+
+**Setup.**
+* New models: `robust cv on_v3 p1 --cond queue_onset --oprior` with seeds
+  3/4/5, and `on_v2` with seeds 1/2.
+* `T2_WORK=/home/user/work/t2h`, `T2_FEAT=/home/user/work/t2h/feat`,
+  `T2_OOF_ALL=1`, `T2_TAGX=_new`. No relabelling is needed: the t2h tables
+  already carry the hybrid labels.
+* Re-running seed 0 gives an OOF file bit-identical to v6's
+  (max |Δp| = 0).
+
+| model / mean | hybrid sim | off | rec<0.05 | rec<0.2 | old sim | Δ hybrid vs v6 | Δ old |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| v6 (0.75 on_v3 s0-2 + 0.25 on_v2 s0) | 0.8589 | 0.8841 | 0.412 | 0.704 | 0.7871 | | |
+| on_v3, single seeds 0-5 | 0.8566-0.8589 | 0.884-0.897 | 0.409-0.428 | 0.699-0.705 | 0.7846-0.7872 | −0.0022 … +0.0001 | |
+| on_v2, single seeds 0-2 | 0.8532-0.8546 | 0.874-0.887 | 0.377-0.386 | 0.689-0.692 | 0.7809-0.7841 | −0.0057 … −0.0043 | |
+| on_v3 × 3 (s0-2), no on_v2 | 0.8596 | 0.8841 | 0.421 | 0.706 | 0.7878 | +0.0007 ± 0.0007 | +0.0007 ± 0.0007 |
+| **`v3x6`**: on_v3 × 6 | 0.8597 | 0.8841 | 0.426 | 0.708 | 0.7883 | +0.0008 ± 0.0010 | +0.0013 ± 0.0010 |
+| **`seeds9`**: 0.75 on_v3 × 6 + 0.25 on_v2 × 3 (v6 proportions) | 0.8593 | 0.8841 | 0.410 | 0.704 | 0.7877 | +0.0004 ± 0.0007 | +0.0006 ± 0.0007 |
+| equal mean of the 9 | 0.8592 | 0.8841 | 0.406 | 0.704 | 0.7876 | +0.0003 ± 0.0006 | +0.0005 ± 0.0007 |
+
+* **Seeds saturate at three.** On the hybrid labels the on_v2 component
+  (v2 features, no physics) is about 0.004 weaker than an on_v3 seed. It
+  costs about 0.0007 in the v6 mix. It was added in v5, where it helped on
+  the old labels.
+* Dropping it (`v3x6`) is a post-hoc choice, so it is reported as
+  exploratory. More seeds alone are within noise.
+
+### Candidates and the gate
+
+Δ is against v6 on the 2,081 re-drawn sim windows (± paired-bootstrap SE;
+p = share of bootstrap Δ ≤ 0). The slices are hybrid / old truth. The
+stacked variants use stage 2 bagged over 3 seeds at w = 0.3. "Nested" picks
+the weight out of fold (w = 0.3 was chosen in every fold for `seeds9_stack03`).
+
+| candidate | hybrid sim | Δ hybrid | old sim | Δ old | Δ rec<0.05 | Δ rec<0.2 | nested Δ hybrid / old | off hybrid / old | gate |
+|---|---:|---:|---:|---:|---|---|---|---|---|
+| v6 | 0.8589 | | 0.7871 | | | | | 0.8841 / 0.7943 | |
+| `seeds9` | 0.8593 | +0.0004 ± 0.0007 (p 0.28) | 0.7877 | +0.0006 ± 0.0007 | −0.002 ± 0.003 / +0.000 ± 0.004 | −0.000 / +0.002 | | 0.8841 / 0.7943 | nominal pass, noise |
+| `v3x6` (exploratory) | 0.8597 | +0.0008 ± 0.0010 (p 0.18) | 0.7883 | +0.0013 ± 0.0010 | +0.014 / +0.015 | +0.004 / +0.005 | | 0.8841 / 0.7943 | nominal pass, noise |
+| `stack03` | 0.8620 | +0.0031 ± 0.0011 (p 0.000) | 0.7887 | +0.0016 ± 0.0011 | +0.018 / +0.010 | +0.009 / +0.006 | +0.0025 / +0.0010 | 0.8897 / 0.8006 | **pass** |
+| **`seeds9_stack03`** | **0.8624** | **+0.0035 ± 0.0011 (p 0.001)** | **0.7894** | **+0.0024 ± 0.0012** | **+0.019 / +0.013** | **+0.011 / +0.009** | **+0.0035 / +0.0024** | **0.8925 / 0.8037** | **pass (recommended)** |
+| `v3x6_stack03` (exploratory) | 0.8627 | +0.0038 ± 0.0013 (p 0.000) | 0.7896 | +0.0025 ± 0.0013 | +0.036 / +0.026 | +0.013 / +0.011 | +0.0028 / +0.0016 | 0.8869 / 0.7974 | pass |
+
+Notes on the table:
+* The old truth with steps 1-5 kept (section 13 convention) gives the same
+  Δs to ±0.0001 (`seeds9_stack03`: +0.0023 ± 0.0012).
+* Windows better / worse under the hybrid truth: `stack03` 40 / 28,
+  `seeds9_stack03` 49 / 28, `v3x6_stack03` 49 / 32.
+
+**Recommended: `lgb_v8_seeds9_stack03.csv`.**
+* Its recipe was fixed before it was scored: v6's model mix with more
+  seeds, plus stacking at the weight the v6 OOF chose.
+* It has the best nested estimate (+0.0035 ± 0.0011 hybrid, +0.0024 ± 0.0012
+  old).
+* Both non-recurrent slices improve under both truths.
+* `v3x6_stack03` scores slightly higher, but it relies on the post-hoc drop
+  of on_v2, and its nested estimate is lower.
+* The seeds-only variants pass only nominally and are not worth a
+  leaderboard slot.
+
+**The files** (lgb_v6.csv with only the onset rows replaced; built by
+`onset_v8.py`):
+* Stage-1 models are trained on all onset windows. The four v6 models are
+  reused, and the five new seeds are saved as `model_v8_*`.
+* Stage 2 is trained on the OOF stage-1 mean of all onset windows. It is
+  applied to the validation/private stage-1 mean. Top-m decoding at T+30.
+
+| file | onset windows changed (of 80) | onset cells changed | added / removed | onset cells (v6 311) | mean window agreement with v6 |
+|---|---:|---:|---|---:|---:|
+| `lgb_v8_stack03.csv` | 5 | 13 | 11 / 2 | 320 | 0.964 |
+| `lgb_v8_seeds9.csv` | 4 | 4 | 2 / 2 | 311 | 0.985 |
+| `lgb_v8_v3x6.csv` | 5 | 6 | 3 / 3 | 311 | 0.979 |
+| **`lgb_v8_seeds9_stack03.csv`** | **7** (4 validation, 3 private) | **15** | **14 / 1** | **324** | **0.966** |
+| `lgb_v8_v3x6_stack03.csv` | 9 | 16 | 12 / 4 | 319 | 0.960 |
+
+Checks:
+* `submit.check` for every file: 174,000 rows, 0 missing, 0 extra, binary.
+* Ongoing rows are identical to v6. Onset cells appear only at T+30, with
+  1-9 per window and all 80 onset windows non-empty.
+* Validation/private probabilities are saved as
+  `/home/user/work/t2h/probs_v8_<name>_onset.parquet` (the columns and row
+  order of `probs_v6_onset.parquet`).
+
+**Self-tests.**
+* `onset_v8` with the four v6 specs and no stacking reproduces
+  `probs_v6_onset.parquet` (max |Δp| = 0) and `lgb_v6.csv` byte for byte.
+* The stage-2 inference path (`onset_v8.stage2_probs`) matches the training
+  features of `stack.build` exactly on shuffled rows.
+
+**`seeds9_stack03` changes vs v6:**
+* Every added link had a v6 probability of 0.01-0.40. Ten of the 14 added
+  links are in three windows whose v6 maximum probability is at most 0.10.
+* D12_I5_N validation 003: links 104, 107, 153 → 45, 103-107, 153, 154, 156,
+  all at p ≈ 0.06-0.10.
+* D12_I5_N validation 004: 116, 237 → 236-238.
+* D12_I5_S validation 004: + link 15. D12_I5_S validation 005: + link 41.
+* D7_I10_W private 003: + links 22, 28.
+* D7_I405_S private 001: + link 15.
+* D12_I5_N private 001: + link 238.
+
+**Calibration bias.** The stacked probabilities are better calibrated than
+v6's, so a positive logit bias hurts them sooner. For `seeds9_stack03`, Δ
+hybrid / old vs plain v6 by bias:
+
+| bias | Δ hybrid | Δ old |
+|---|---:|---:|
+| −0.25 | +0.0023 | +0.0015 |
+| 0 | +0.0035 | +0.0024 |
+| +0.25 | +0.0022 | +0.0007 |
+| +0.5 | −0.0004 | −0.0018 |
+| +0.75 | −0.0035 | −0.0052 |
+
+For v6 itself, +0.5 is flat (−0.0001 / −0.0009). If a bias is applied to the
+v8 probabilities, it should be at most about +0.25, not the value tuned for
+v6. The 40 official windows favour a positive bias for both, by about
++0.01.
+
+**Expected effect.**
+* CV onset +0.0035 is about S_queue +0.0018.
+* The gain sits in low-confidence windows, which are over-represented in
+  March (section 11, and the stage-1 confidence table above). The v6 label
+  fix transferred at 2.5-6× its CV gain. So the March effect may be larger,
+  but only 4 validation windows change.
+
+### Reproduce
+
+```
+export PYTHONPATH=/home/user/knee OMP_NUM_THREADS=2 T2_WORK=/home/user/work/t2h T2_FEAT=/home/user/work/t2h/feat
+# extra seeds: 4-fold OOF on all onset rows, hybrid labels, re-drawn windows (~5 min each)
+for s in 3 4 5; do T2_OOF_ALL=1 T2_TAGX=_new T2_SEED=$s python -m trafficflow.t2.robust cv on_v3 p1 --cond queue_onset --oprior; done
+for s in 1 2; do T2_OOF_ALL=1 T2_TAGX=_new T2_SEED=$s python -m trafficflow.t2.robust cv on_v2 p1 --cond queue_onset --oprior; done
+python -m trafficflow.t2.onset_eval                        # v6 and its components under both truths
+# stage-2 stacking (T2_THREADS sets the stage-2 threads); ~2-4 min each
+python -m trafficflow.t2.stack_v8 v6s012 --seeds 0,1,2     # stage 1 = v6's four OOF files
+python -m trafficflow.t2.stack_v8 seeds9s012 $(python -c "from trafficflow.t2.stack_v8 import V3X6,V2X3; print(' '.join(V3X6+V2X3))") \
+  --weights 3,3,3,3,3,3,2,2,2 --seeds 0,1,2
+python -m trafficflow.t2.stack_v8 v3x6s012 $(python -c "from trafficflow.t2.stack_v8 import V3X6; print(' '.join(V3X6))") --seeds 0,1,2
+python -m trafficflow.t2.stack_v8 table                    # the candidate table above
+# candidate files (lgb_v6.csv with the onset rows replaced) + probs_v8_<name>_onset.parquet
+S9=on_v3:0:3,on_v3:1:3,on_v3:2:3,on_v3:3:3,on_v3:4:3,on_v3:5:3,on_v2:0:2,on_v2:1:2,on_v2:2:2
+python -m trafficflow.t2.onset_v8 seeds9_stack03 --specs $S9 --stack 0.3 --stack-seeds 0,1,2
+python -m trafficflow.t2.onset_v8 stack03 --stack 0.3 --stack-seeds 0,1,2
+python -m trafficflow.t2.onset_v8 seeds9 --specs $S9
+python -m trafficflow.t2.onset_v8 v3x6 --specs on_v3:0,on_v3:1,on_v3:2,on_v3:3,on_v3:4,on_v3:5
+python -m trafficflow.t2.onset_v8 v3x6_stack03 --specs on_v3:0,on_v3:1,on_v3:2,on_v3:3,on_v3:4,on_v3:5 --stack 0.3 --stack-seeds 0,1,2
+```
+
+Resources:
+* Onset CV peaks at about 1.3 GB RSS, stacking at 0.7-0.9 GB and a build at
+  0.7 GB.
+* The candidate builds and the stacking ran with 1 thread. The new stage-1
+  models were trained with 1 thread. Thread count can change LightGBM
+  results in the last bits.
+* Logs are in `/home/user/work/t2h/logs/`. Stage-2 OOFs are in
+  `/home/user/work/t2h/stack8_oof_<tag>.parquet`.

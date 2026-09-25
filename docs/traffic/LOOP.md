@@ -44,13 +44,13 @@ Background agents and jobs wake the session when they finish, so work continues 
    (**Backup** below).
 
 ## Current best
-**`G1_tvsmooth.zip` = 0.86651** (2026-09-25). Post-rebuild rank 9 of 140; #1 is 0.88849 (gap 0.0220).
+**`G2_onset_v8stack.zip` = 0.86711** (2026-09-25). #1 post-rebuild is 0.88849.
 
 Build:
 ```
 python3 -m trafficflow.make_submission --state-tag full3 --recon-a 0.75 --gate 0.6 \
   --smooth "free=0.0075,free_a=0.001,gate=0.02,gate_a=0.005,dark=0.05" \
-  --queue /home/user/work/t2/lgb_v6.csv --odme /home/user/work/t4/t4_l2proj.csv \
+  --queue /home/user/work/t2/lgb_v8_seeds9_stack03.csv --odme /home/user/work/t4/t4_l2proj.csv \
   --out /home/user/work/subs/<ID>.csv --note "<ID>: ..."
 python3 -m trafficflow.loop pack /home/user/work/subs/<ID>.csv
 ```
@@ -59,13 +59,13 @@ The build takes about 2.5 min, of which the smoothing is about 150 s.
 - **Task 1:** `full3` LightGBM models (FD features, `TFB_FD=1`).
   - Density reconciliation applies only where v < 0.6·v_f, with speed/flow split a = 0.75.
   - Then total-variation (TV) smoothing of the density inside runs of target cells (`trafficflow/t1_smooth.py`, docs/traffic/T3_SMOOTHING.md).
-- **Task 2:** `lgb_v6`.
-  - Onset: 4 models trained on hybrid labels, top-m expected-IoU decoding at bias 0.
-  - Ongoing: the v5 blend.
-  - Val/private probabilities: `work/t2h/probs_v6_onset.parquet`, `work/t2/probs_lgb_v5.parquet`.
+- **Task 2:** `lgb_v8_seeds9_stack03` (TASK2_ANALYSIS.md section 15).
+  - Onset: 0.7 × stage 1 + 0.3 × stage-2 stacking. Stage 1 is 0.75 × six on_v3 seeds + 0.25 × three on_v2 seeds, all on hybrid labels. Top-m decoding at bias 0; cap any bias at +0.25.
+  - Ongoing: the v5 blend, unchanged since v5.
+  - Val/private probabilities: `work/t2h/probs_v8_seeds9_stack03_onset.parquet`, `work/t2/probs_lgb_v5.parquet`.
 - **Task 4:** L2 projection.
 
-G1 by task: ODME 0.1988 (task score 0.994), Task 1+3 ≈ 0.4325, queue ≈ 0.2352 (onset 0.728 exact,
+G2 by task: ODME 0.1988 (task score 0.994), Task 1+3 ≈ 0.4325, queue ≈ 0.2358 (onset ≈ 0.732,
 ongoing ≈ 0.840).
 
 ## Gates
@@ -92,7 +92,7 @@ ongoing ≈ 0.840).
 ## Candidate queue
 | ID | Change vs best | Local evidence | Status |
 |---|---|---|---|
-| – | onset stage-2 stacking and more seeds (hybrid labels) | agent running | waiting |
+| – | ongoing stage-2 stacking, with recurrence-aware window features | agent to launch 25 Sep | waiting |
 | – | Task 1 seed/bagging ensemble (hold + full fits) | not started | next overnight job |
 
 ## Decision log
@@ -101,12 +101,13 @@ ongoing ≈ 0.840).
 | 09-25 | F1: onset re-decoded with logit bias +0.5 (+15 cells, 12 in validation) | 0.86356 (−0.00235) | Larger onset sets hurt on March (onset −0.016); the official first-slot blocks are not larger than ours. Keep b = 0 |
 | 09-25 | F2: onset site-commit decoder `site2_lo.05_r.5` (−11 hedge cells) | 0.86418 (−0.00173) | Fewer hedges hurt too (onset −0.012). Top-m at b = 0 is optimal on March from both sides; onset gains must come from better probabilities, not decoding |
 | 09-25 | **G1: E1 + TV density smoothing inside target runs** (state rows only) | **0.86651 (+0.00060)** | Local J predicted +0.00062. **Adopted: new best.** The Task 3 proxy predicts the LB to within 0.00002 |
+| 09-25 | **G2: G1 + onset v8** (stacking 0.3 + 9-seed mix; 15 cells, 11 in 4 validation windows) | **0.86711 (+0.00060)** | CV onset +0.0035 hybrid / +0.0024 old, i.e. about +0.0005 total. **Adopted: new best.** Shape-aware hedges from stage 2 help on March, where F1's blanket bias hurt |
 
 ## Robust list (final-selection pool)
 Empty so far.
 
 ## Backlog (ordered by expected gain per effort)
-1. Onset stage-2 stacking and more seeds on hybrid labels (agent, 25 Sep).
+1. Ongoing stage-2 stacking (the onset analogue gained +0.004 on March), with window-level recurrence and growth features in stage 2 so it can correct under-predicted growth in non-recurrent windows.
 2. Task 1/3 per-cell accuracy. Isolated target cells carry 46–48% of the LWR loss and short runs (2–3 cells) 36–38% (T3_SMOOTHING.md):
    - seed/bagging ensemble of the six Task 1 models (hold fit for the J gate, then a full fit);
    - flow-model capacity, since flow error dominates free-flow density error.
@@ -120,6 +121,7 @@ Empty so far.
 6. Ongoing label fix v7 as an LB test (low priority: its non-recurrent slice got worse).
 
 Closed:
+- Onset stacking and seeds: adopted in G2. Seed means saturate at 3; dropping on_v2 (v3x6) is exploratory only.
 - Task 3 TV smoothing: adopted in G1 (+0.00060). Gate 0.7 adds only +0.00004 locally (noise); a = 1.0 fails the gate.
 - decoder calibration (F1/F2 above);
 - ongoing logit bias: CV optimum at b = 0 (0.8833). Only the official train windows prefer larger

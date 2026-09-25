@@ -75,6 +75,7 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-25 08:18 | **F1** probe `F1_onsetb05.zip` | E1 with the v6 onset re-decoded at logit bias +0.5 (+15 onset cells; 12 in 8 validation windows) | 0.86356 | – | −0.00235 → **March onset −0.016**: larger onset sets hurt |
 | 2026-09-25 08:44 | **F2** `F2_onset_site2.zip` | E1 with the onset decoded by `site2_lo.05_r.5` (commit to 1–2 sites; −11 hedge cells, 9 in 7 validation windows) | 0.86418 | 9/140 post-rebuild (E1) | −0.00173 → **March onset −0.012**: fewer hedges hurt too. Base stays E1 |
 | 2026-09-25 09:44 | **G1** `G1_tvsmooth.zip` | E1 + TV smoothing of the density inside runs of target cells (5.1M state rows, mean \|Δv\| 0.0066 km/h, \|Δq\| 11 veh/h) | **0.86651** | 9/140 post-rebuild | **+0.00060, exactly the local J prediction (+0.00062).** Base → G1 |
+| 2026-09-25 10:25 | **G2** `G2_onset_v8stack.zip` | G1 with onset = v8 `seeds9_stack03` (stage-2 stacking 0.3 + 9-seed stage 1; 15 onset cells, 11 in 4 validation windows) | **0.86711** | – | **+0.00060** → March onset about +0.004 (CV +0.0035 hybrid / +0.0024 old). Base → G2 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |

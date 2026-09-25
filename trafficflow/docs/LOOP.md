@@ -80,11 +80,15 @@ ongoing ≈ 0.840).
   prediction.
 - **Task 1/3 gate:** J = 0.35·S_state + 0.10·S_LWR (full-coverage holdout, realistic blackouts,
   `trafficflow/t1_lwr_eval.py`) improves on at least 3 of 4 panels, and the mean improves.
-- **Task 2 gate:**
-  - onset/ongoing CV under the hybrid truth ≥ best − 0.002;
-  - the conservative evaluation (re-drawn windows, old truth) ≥ best − 0.002, and within one paired
-    SE of 0;
-  - onset, ongoing or the non-recurrent slices (recur < 0.05 / < 0.2) improve.
+- **Task 2 gate** (since 2026-09-25; TASK2_ANALYSIS.md section 17). All three must hold:
+  1. **Plain CV.**
+     - The hybrid-truth score is ≥ best − 0.002.
+     - The conservative evaluation (re-drawn windows, old truth) is ≥ best − 0.002 and within one paired SE of 0.
+     - Onset, ongoing or the non-recurrent slices improve.
+  2. **Shift-weighted CV** (`trafficflow/t2/shift_cv.py`: `weights`, `score`). The Δ is positive under both the validation and the private weighting. Reject if either is below −1 SE.
+  3. **Footprint check** (`shift_cv.footprint_check`, on both months). A flag (≥ p95) means the change goes to the LB as a probe first and is never adopted directly. A flag on private means don't adopt at all.
+
+  Applied retroactively, this gate makes the right call on all 8 past Task 2 changes. That includes G3 (+0.0065 in plain CV but −0.023 on March), which the footprint check flags.
 - **Local gain, LB Δ ≤ 0:** not adopted. It goes on the robust list for the final pick, since there
   are only 40 windows per Task 2 condition and private is a different month (7 incidents vs 5).
 
@@ -98,6 +102,7 @@ ongoing ≈ 0.840).
 ## Candidate queue
 | ID | Change vs best | Local evidence | Status |
 |---|---|---|---|
+| H1 (26 Sep, 00:07) | G2 + ongoing v10 `og_shrink08_rec05`: stage 2 may only remove v5 cells, only where recurrence ≥ 0.05. Removes 35 validation cells in 10 windows (42 private cells in 16 windows), all of them G3 removals. Build with `--queue /home/user/work/t2/lgb_v10_og_shrink08_rec05.csv` | plain +0.0029 ± 0.0005 old / +0.0023 hybrid; validation-weighted +0.0049 ± 0.0010; private-weighted +0.0035 ± 0.0006; footprint clean on both months | **probe-candidate.** Adopt if Δ ≥ +0.0005. If Δ ≤ −0.0006 (ongoing ≤ −0.004), drop the ongoing stack line entirely, final pick included |
 | – | Task 1 seed ensemble (hold4/full4, averaged with hold3/full3) | agent running | waiting |
 
 ## Decision log

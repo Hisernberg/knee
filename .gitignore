@@ -27,3 +27,8 @@ kaggle.json
 .env
 build/
 kaggle/submission_log.jsonl
+# red_tape_raccoon: the gated handbook, third-party clones and run logs never get committed
+red_tape_raccoon/vendor/
+red_tape_raccoon/runs/
+**/managed-care-operations-handbook/
+*.jsonl.zst

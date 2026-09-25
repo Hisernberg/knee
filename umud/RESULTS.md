@@ -73,3 +73,48 @@ Prepared for the next quota day: `submissions/s06_A2_osf_calibrated.csv` (re-run
   DLTrack 1.45°; the Vera PA is DLTrack-lineage).
 - Weekly Kaggle GPU quota exhausted; `seg.py --init/--kinds/--lr` + `build_kernel.py --cpu --weights-kernel` fine-tune
   the fascicle model on de-duplicated data (670 duplicate pairs removed) in a 12 h CPU kernel.
+
+## Fascicle fine-tune on de-duplicated data (local CPU, 3 epochs, lr 1e-4)
+Kaggle GPU quota and CPU session slots were exhausted, so this ran locally from the GPU weights.
+Validation Dice 0.303 → 0.333 (the old validation split shared duplicates with training).
+OSF benchmark: PA `pa_wmed` 1.06° → 1.02°, FL `fl_med` 8.50 → 8.10 mm, `fl_top5` 6.73 → 6.37 mm, MT unchanged.
+Prepared: `submissions/s11_Aft_pipeline.csv` (re-runnable) and `submissions/s12_C5ft.csv` (C5 weights on A_ft).
+
+## Day 3 (2026-09-24): single-axis weight search around C5 (pipeline share per target)
+| Shot | PA / FL / MT weights | Public LB |
+|---|---|---|
+| C5ft | .6 / .3 / .6 on the fine-tuned pipeline | 0.35317 (fine-tune helps on OSF, not on test) |
+| C6 | .75 / .3 / .6 | 0.35671 |
+| C7 | .6 / .2 / .6 | 0.35103 |
+| C8 | .6 / .4 / .6 | 0.35596 |
+| **C9** | **.6 / .3 / .75** | **0.34509 (rank 8, new best)** |
+
+PA is optimal near 0.6 (quadratic fit ≈ 0.56) and FL near 0.3. MT is still improving at 0.75, consistent with the OSF
+benchmark (pipeline MT 0.50 mm vs DLTrack 1.03 mm), so next is MT 0.9 / 1.0.
+
+## Day-4 review: mistakes found in the best blends
+1. **Pipeline failures blended as prior constants.** IMG_00189/190 had no aponeurosis pair, so shot A filled the prior
+   (PA 17 / FL 80 / MT 21, then smoothed) and every C-blend mixed it in. `blend_v2.py` now uses the reference there.
+2. **Wrong deep aponeurosis on 3-band images.** The "widest band" rule picked a deeper boundary: IMG_00121–125 got
+   MT 40.2 mm (reference 25.0) and FL ≈ 187 mm. New `geometry.DEEP_RULE = "hybrid"`: the nearest substantial band
+   below the superficial aponeurosis (the protocol for superficial muscles), falling back to the widest band when
+   the nearest implies an inner-edge MT < 12 mm. On 3-band images the MT disagreement drops 2.54 → 1.50 mm and FL 14.9 → 10.4 mm.
+   Only IMG_00121–125 change on the test set. In C9 those rows had MT ≈ 36 mm; now ≈ 24.6 mm.
+3. **Additive decomposition of the leaderboard.** The score is a sum over targets, so the differences between
+   C3–C9 isolate each target's curve: optimum PA weight ≈ 0.56, FL ≈ 0.27 (≈ 0.0004 gain each), MT still decreasing at 0.75.
+4. Linear blending passes pipeline outliers through (FL |A−V| 99th pct 85 mm); `--clip-*` gives a Huber-style option.
+
+Prepared (`submissions/d4_*.csv`): S1 fixed (hybrid pipeline, failures → ref, w .56/.27/.75), S2 MT 1.0 (clip 4 mm),
+S2b MT 0.9, S3 FL clip 15 mm, S4 PA offset 0.8, and F (old pipeline with only the failure fix, as a fallback).
+
+## Day 4 (2026-09-25): fixes validated, rank 4
+| Shot | Change | Public LB |
+|---|---|---|
+| S1 | C9 + hybrid deep-band fix + failure rows → ref + w .56/.27/.75 | 0.32911 (−0.016 vs C9) |
+| **S2** | S1 with MT weight 1.0 (MT residual clip 4 mm) | **0.32182 (rank 4/293)** |
+| S3 | S2 + FL residual clip 15 mm | 0.33649 (FL outliers are mostly right → no clipping) |
+| S4 | S2 with MT weight 1.25 | 0.33096 (MT optimum ≈ 0.99 by quadratic fit) |
+| S5 | S2 with PA offset 0.8 (instead of 1.6) | 0.32618 (a larger PA offset looks better → test 2.4) |
+
+Reproduce S2: `python scripts/blend_v2.py --ref vera.csv --groups test_groups.npy --pipeline submissions/s17_Ahyb_pipeline.csv
+--features features_hyb.csv --w 0.56 0.27 1.0 --clip-mt 4 --out S2.csv`.

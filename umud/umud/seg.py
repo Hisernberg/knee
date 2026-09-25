@@ -278,6 +278,11 @@ def main():
     IN_H, IN_W = (int(v) for v in a.size.split("x"))
     WORKERS = a.workers
     INIT_DIR, LR = a.init, a.lr
+    if INIT_DIR and not (Path(INIT_DIR) / "apo.pt").exists():  # Kaggle mounts kernel outputs at varying depths
+        hits = sorted(glob.glob(str(Path(INIT_DIR).parent / "**" / "apo.pt"), recursive=True))
+        if hits:
+            INIT_DIR = str(Path(hits[0]).parent)
+        print("init weights from", INIT_DIR, flush=True)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     data, out = Path(a.data), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -288,7 +293,7 @@ def main():
                 train_kind(data, out, k, a.epochs_apo if k == "apo" else a.epochs_fasc, a.bs, dev)
             elif a.init:  # untouched model: carry the old weights over for inference
                 import shutil
-                shutil.copy(Path(a.init) / f"{k}.pt", out / f"{k}.pt")
+                shutil.copy(Path(INIT_DIR) / f"{k}.pt", out / f"{k}.pt")
     infer_test(data, out, Path(a.weights) if a.weights else out, dev)
 
 

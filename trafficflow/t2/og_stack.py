@@ -35,7 +35,9 @@ all in traffic direction (the link axis of the W/S panels is reversed, see
 
 Variants: ``--comp`` adds the loc / noloc component probabilities (stage-1
 disagreement), ``--loc`` adds the time-of-day prior pq_k, ``--weighted``
-gives every window equal total weight, ``--no-pcode`` drops the panel code.
+gives every window equal total weight, ``--drop`` removes columns or prefixes
+(``x_*``). The adopted recipe (``dyn``, section 16) is
+``--seeds 0,1,2 --drop 'x_rec,x_tod,x_wkend,s_pcode,s_relpos'`` at w = 0.8.
 
 Evaluation (``OngoingEval``): top-m expected-IoU decoding per window, scored
 under the old truth (``ds_<p>.npz["y"]``, the labels of every model so far)
@@ -45,7 +47,11 @@ slices; paired bootstrap by window (``OnsetEval.compare``).
 
     T2_WORK=/home/user/work/t2 T2_FEAT=/home/user/work/t2/feat_v3 \
     python -m trafficflow.t2.og_stack TAG [--seeds 0,1,2] [--rounds 300] [--leaves 31] [--min-data 100]
-        [--weighted] [--comp] [--loc] [--no-pcode]
+        [--weighted] [--comp] [--loc] [--drop COLS]
+    python -m trafficflow.t2.og_stack table16 [W]          # section 16 table from the saved OOFs
+    python -m trafficflow.t2.og_stack diag TAG W           # folds, panels, confidence, size, growth, calibration
+    python -m trafficflow.t2.og_stack bias TAG W           # decoder check: logit bias before top-m
+    python -m trafficflow.t2.og_stack watch W TAG [TAG...] # non-recurrent / D7_I10_W slices
 
 Writes WORK/ogstack_oof_<TAG>.parquet (gw, k, link, y, fold, src, p1, p2).
 """
@@ -526,8 +532,73 @@ def watch(E: OngoingEval, V: dict, ref: str = "v5") -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("variant").round(4)
 
 
+TAGS16 = {"base (3 seeds)": "base_s012", "base, 1 seed": "base_s0", "window weights": "w_s0", "+ loc/noloc components": "comp_s0",
+          "+ time-of-day prior pq_k": "loc_s0", "no panel code": "nopcode_s0", "no context (x_*, panel, position)": "noctx_s0",
+          "field only (no o_*, x_*)": "field_s0", "**dyn** (3 seeds)": "dyn_s012", "no context (3 seeds)": "noctx_s012",
+          "no context, 63 leaves / 500 rounds": "noctx_big_s0"}
+
+
+def table16(w: float = 0.8, n_boot: int = 2000) -> pd.DataFrame:
+    """Section 16 table: every saved stage-2 OOF at blend weight ``w`` vs v5 (both truths), the nested
+    estimate (weight chosen on three folds, old truth) and the D7_I10_W non-recurrent watch column."""
+    from .stack_v8 import nested_weight
+    E = OngoingEval()
+    rows = []
+    p1 = None
+    for name, tag in TAGS16.items():
+        if not (WORK / f"ogstack_oof_{tag}.parquet").exists():
+            continue
+        a, b = saved(tag, E)
+        if p1 is None:
+            p1 = a
+            r0 = E.evaluate(p1)
+            rows.append({"variant": "v5 (stage 1)", **{f"{t}:{c}": r0[t][c] for t in E.truths
+                                                       for c in ("sim", "off", "recur<0.05", "recur<0.2")}})
+        assert np.allclose(a, p1)
+        pb = w * b + (1 - w) * a
+        r = E.evaluate(pb); c = E.compare(pb, p1, n_boot=n_boot)
+        nest, chosen = nested_weight(E, a, b, WEIGHTS, truth="old")
+        cn = E.compare(nest, E.window_iou(p1), n_boot=n_boot)
+        wt = watch(E, {"v5": p1, name: pb})
+        rows.append({"variant": name, **{f"{t}:{k}": r[t][k] for t in E.truths for k in ("sim", "off", "recur<0.05", "recur<0.2")},
+                     **{f"{t}:Δsim": c[t]["d_sim"] for t in E.truths}, **{f"{t}:se": c[t]["se_sim"] for t in E.truths},
+                     "old:Δoff": c["old"]["d_off"], "old:Δ<0.05": c["old"]["d_recur<0.05"], "old:Δ<0.2": c["old"]["d_recur<0.2"],
+                     "nested old Δ": cn["old"]["d_sim"], "nested old se": cn["old"]["se_sim"],
+                     "nested hybrid Δ": cn["hybrid"]["d_sim"], "nested w": "/".join(str(chosen[f]) for f in range(4)),
+                     "I10_W rec<0.05 Δ": wt.loc[name, "I10_W rec<0.05"]})
+    t = pd.DataFrame(rows).set_index("variant")
+    pd.set_option("display.width", 300); pd.set_option("display.max_columns", 40)
+    print(t.round(4).to_string(), flush=True)
+    return t
+
+
+def bias_curve(tag: str, w: float, biases=(-0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0)) -> pd.DataFrame:
+    """Decoder check: logit bias b before top-m decoding, for v5 and the stacked blend (Δ vs plain v5)."""
+    E = OngoingEval()
+    p1, p2 = saved(tag, E)
+    pb = w * p2 + (1 - w) * p1
+    d0 = E.window_iou(p1)
+    rows = []
+    for name, p in (("v5", p1), (f"stack w={w}", pb)):
+        for b in biases:
+            d = E.window_iou(shift(p, b)); s = E.summary(d); c = E.compare(d, d0, n_boot=500)
+            rows.append({"probs": name, "b": b, **{f"{t}:sim": s[t]["sim"] for t in E.truths},
+                         **{f"{t}:Δ": c[t]["d_sim"] for t in E.truths}, "old:off": s["old"]["off"],
+                         "old:rec<0.05": s["old"]["recur<0.05"], "old:rec<0.2": s["old"]["recur<0.2"],
+                         "cells/window": float(d[d.src == "sim"].m.mean())})
+    t = pd.DataFrame(rows)
+    print(t.round(4).to_string(index=False), flush=True)
+    return t
+
+
 def main():
     import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "table16":
+        table16(float(sys.argv[2]) if len(sys.argv) > 2 else 0.8)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "bias":
+        bias_curve(sys.argv[2], float(sys.argv[3]))
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "diag":
         diag(sys.argv[2], float(sys.argv[3]))
         return

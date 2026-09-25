@@ -98,8 +98,7 @@ ongoing ≈ 0.840).
 ## Candidate queue
 | ID | Change vs best | Local evidence | Status |
 |---|---|---|---|
-| – | ongoing stage-2 stacking, with recurrence-aware window features | agent to launch 25 Sep | waiting |
-| – | Task 1 seed/bagging ensemble (hold + full fits) | not started | next overnight job |
+| – | Task 1 seed ensemble (hold4/full4, averaged with hold3/full3) | agent running | waiting |
 
 ## Decision log
 | Date | Submission | Public (Δ vs best) | Decision / lesson |
@@ -108,12 +107,16 @@ ongoing ≈ 0.840).
 | 09-25 | F2: onset site-commit decoder `site2_lo.05_r.5` (−11 hedge cells) | 0.86418 (−0.00173) | Fewer hedges hurt too (onset −0.012). Top-m at b = 0 is optimal on March from both sides; onset gains must come from better probabilities, not decoding |
 | 09-25 | **G1: E1 + TV density smoothing inside target runs** (state rows only) | **0.86651 (+0.00060)** | Local J predicted +0.00062. **Adopted: new best.** The Task 3 proxy predicts the LB to within 0.00002 |
 | 09-25 | **G2: G1 + onset v8** (stacking 0.3 + 9-seed mix; 15 cells, 11 in 4 validation windows) | **0.86711 (+0.00060)** | CV onset +0.0035 hybrid / +0.0024 old, i.e. about +0.0005 total. **Adopted: new best.** Shape-aware hedges from stage 2 help on March, where F1's blanket bias hurt |
+| 09-25 | G3: G2 + ongoing v9 stage-2 stacking (217 ongoing cells, 139 in validation) | 0.86361 (−0.00350) | CV +0.0065 ± 0.0009 (7 SE) but **March ongoing −0.023**. Not adopted, and not on the robust list. The stack extends queues (D7_I10_E +22 to +27 cells per window) and reshuffles small ones (D7_I10_W, D12_I5_N). Train-month growth patterns don't hold in the shifted months. **Lesson: plain CV cannot gate Task 2 ongoing changes; build a shift-weighted CV first** |
 
 ## Robust list (final-selection pool)
 Empty so far.
 
 ## Backlog (ordered by expected gain per effort)
-1. Ongoing stage-2 stacking (the onset analogue gained +0.004 on March), with window-level recurrence and growth features in stage 2 so it can correct under-predicted growth in non-recurrent windows.
+1. **Shift-weighted CV for Task 2** (the gate for every future Task 2 change).
+   - Importance weights make train CV windows resemble the validation or the private windows. They come from a classifier on window-level features known at T.
+   - It must reproduce today's LB directions before it is trusted: F1 −, F2 −, G2 +, G3 −.
+   - Use it for all Task 2 candidates, with a separate April (private) weighting for final selection.
 2. Task 1/3 per-cell accuracy. Isolated target cells carry 46–48% of the LWR loss and short runs (2–3 cells) 36–38% (T3_SMOOTHING.md):
    - seed/bagging ensemble of the six Task 1 models (hold fit for the J gate, then a full fit);
    - flow-model capacity, since flow error dominates free-flow density error.
@@ -127,6 +130,7 @@ Empty so far.
 6. Ongoing label fix v7 as an LB test (low priority: its non-recurrent slice got worse).
 
 Closed:
+- Ongoing stage-2 stacking v9 (G3): failed transfer (−0.00350). Revisit only through the shift-weighted CV.
 - Onset stacking and seeds: adopted in G2. Seed means saturate at 3; dropping on_v2 (v3x6) is exploratory only.
 - Task 3 TV smoothing: adopted in G1 (+0.00060). Gate 0.7 adds only +0.00004 locally (noise); a = 1.0 fails the gate.
 - decoder calibration (F1/F2 above);

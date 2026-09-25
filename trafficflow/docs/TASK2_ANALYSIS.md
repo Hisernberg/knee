@@ -1028,3 +1028,302 @@ Resources:
   results in the last bits.
 * Logs are in `/home/user/work/t2h/logs/`. Stage-2 OOFs are in
   `/home/user/work/t2h/stack8_oof_<tag>.parquet`.
+
+## 16. Ongoing stage-2 stacking on the v5 probability field (`lgb_v9_ogstack08`)
+
+**Goal.** A single-factor ongoing change on top of `lgb_v8_seeds9_stack03`.
+On March, ongoing scores about 0.840 against 0.883 in CV. March also has many
+more non-recurrent ongoing windows (section 11). The onset stacking of
+section 15 transferred to March (about +0.004).
+
+**Gate** (the coordinator's rule for a leaderboard candidate):
+* CV sim improves: paired-bootstrap Δ > 0, ideally by more than 1 SE.
+* off is not worse beyond noise.
+* The non-recurrent slices are not worse. Improving them is the goal.
+
+### Setup (`og_stack.py`)
+
+* **Stage 1.** The v5 ongoing blend: 0.35 LWR-all, 0.35 LWR-noloc,
+  0.15 v2-all and 0.15 v2-noloc (p2 config, old labels).
+  * Its OOF files cover only the evaluation windows: 3,001 sim and 40 off
+    ongoing windows, 1.73 M candidate cells (`robust cv` without
+    `T2_OOF_ALL`).
+  * So stage 2 trains on those 3,041 windows, with the same 4 week folds
+    (OOF stacking). The stage-2 model of a fold never sees that fold's
+    windows.
+* **Stage 2.** LightGBM per candidate cell (window, step k, link): 31 leaves,
+  min_data 100, lr 0.05, 300 rounds, feature and bagging fraction 0.8,
+  2 threads. It is bagged over 3 seeds. The 4 folds take about 2 min per seed.
+* **Final probability** = `w × p2 + (1 − w) × p1`, then top-m decoding.
+* **Features** are all in traffic direction. The link axis of the W/S panels
+  is reversed with `core.direction`, as in `stack.py`.
+  * **Field (`s_`).**
+    * p, and p at link offsets −4..+4.
+    * p at steps k−1 and k+1, same link and ±1 link.
+    * Step sum and max, window sum, step-sum growth vs step 1, vs step
+      k−1 and vs the observed queue at T.
+    * Rank in the step, p / step max, mass 0.5 / 1 / 2 km downstream and
+      upstream.
+    * Predicted blocks (runs of p ≥ 0.5): signed distance in links and km
+      to the tail of the block containing the link or the next block
+      downstream, and to the head of the containing block or the next one
+      upstream.
+    * Block length (links, km) and mass, number of blocks.
+    * Tail and head movement vs step k−1 and vs the observed block at T.
+  * **Observed queue (`o_`, data ≤ T).**
+    * The queue indicator `r_now ≤ 1`: slot T where visible, else the last
+      history value.
+    * The observed block's tail and head distances and length, and the
+      number of queued links.
+    * Tail and head movement over the last 20 and 35 min. It comes from the
+      filled history ratio at T−20 / T−35 min, which is `r_last − d_r15` /
+      `r_last − d_r30`.
+    * The observed tail extrapolated linearly to T+5k.
+    * These replace feat_v3's `lw_*` columns. Those are mirrored on the W/S
+      panels (section 13), so they are not used here.
+  * **Window context (`x_`).**
+    * Recurrence (`robust.recurrence`).
+    * Queued links at the end of the history and at T, and the 15 / 60-min
+      trends.
+    * Weekend flag and time of day.
+    * Per link: `r_now`, `r_last`, `d_r15`.
+  * **Static.** Step k, link length, relative position, panel code.
+* **Evaluator (`OngoingEval`).** It subclasses `OnsetEval`, so `compare()` and
+  `stack_v8.nested_weight` are reused.
+  * Top-m decoding per window.
+  * Two truths on the original windows:
+    * **old**: `ds_<p>.npz["y"]`, the training labels;
+    * **hybrid**: the truthfix hybrid truth, `ds_<p>_y2.npz["y"]`.
+  * Official aggregation for sim and off. The recurrence slices are plain
+    means over 78 / 298 windows.
+  * Paired bootstrap by window, 2,000 replicates.
+  * It reproduces v5 exactly: sim 0.8833, off 0.8906, rec<0.05 0.599,
+    rec<0.2 0.781 (old truth). The hybrid truth gives 0.8804 / 0.8938 /
+    0.593 / 0.774.
+  * The t2h re-drawn windows were not scored: only fast-config ongoing OOFs
+    exist there.
+
+### Results
+
+All rows use w = 0.8, the weight used by the candidate. Δ is against v5, ±
+the paired-bootstrap SE.
+* "Nested" chooses w per fold on the other three folds (old truth, grid
+  0.2-1.0) and reports the old / hybrid Δ with the weights chosen.
+* The last column is the plain-mean Δ on D7_I10_W's non-recurrent windows
+  (18 of the 78 with recurrence < 0.05). All five March D7_I10_W ongoing
+  windows are of this kind.
+
+| stage 2 (seeds) | old sim | Δ old | Δ hybrid | off | rec<0.05 | rec<0.2 | nested Δ old / hybrid (w per fold) | D7_I10_W rec<0.05 |
+|---|---:|---:|---:|---:|---:|---:|---|---:|
+| v5 (stage 1) | 0.8833 | | | 0.8906 | 0.599 | 0.781 | | |
+| all features (3) | 0.8901 | +0.0068 ± 0.0011 | +0.0069 | 0.9017 | 0.621 | 0.798 | +0.0062 / +0.0065 (0.8/0.8/1/0.7) | −0.041 |
+| all features (1) | 0.8899 | +0.0066 ± 0.0010 | +0.0069 | 0.9025 | 0.619 | 0.799 | +0.0065 / +0.0067 (1/1/1/0.7) | −0.037 |
+| + window weights (1) | 0.8894 | +0.0061 ± 0.0011 | +0.0058 | 0.8960 | 0.626 | 0.800 | +0.0055 / +0.0054 | −0.025 |
+| + loc / noloc component p (1) | 0.8892 | +0.0058 ± 0.0011 | +0.0062 | 0.9004 | 0.617 | 0.798 | +0.0053 / +0.0055 | −0.049 |
+| + time-of-day prior `pq_k` (1) | 0.8903 | +0.0070 ± 0.0011 | +0.0070 | 0.9017 | 0.626 | 0.799 | +0.0069 / +0.0068 | −0.032 |
+| − panel code (1) | 0.8898 | +0.0065 ± 0.0011 | +0.0067 | 0.9023 | 0.627 | 0.802 | +0.0064 / +0.0066 | −0.041 |
+| − context (`x_*`, panel, position) (1) | 0.8892 | +0.0059 ± 0.0009 | +0.0063 | 0.9042 | 0.629 | 0.801 | +0.0059 / +0.0062 | −0.028 |
+| field only (− `o_*`, `x_*`) (1) | 0.8885 | +0.0052 ± 0.0009 | +0.0050 | 0.9025 | 0.613 | 0.792 | +0.0048 / +0.0046 | −0.031 |
+| **`dyn`: − recurrence, time of day, weekend, panel, position (3)** | **0.8899** | **+0.0065 ± 0.0009** | **+0.0069** | **0.9031** | **0.630** | **0.801** | **+0.0065 ± 0.0009 / +0.0068 (0.8/0.7/0.8/0.8)** | **−0.020** |
+| − context (3) | 0.8896 | +0.0063 ± 0.0009 | +0.0065 | 0.9040 | 0.630 | 0.802 | +0.0063 / +0.0065 (0.8 ×4) | −0.027 |
+| − context, 63 leaves / 500 rounds (1) | 0.8902 | +0.0069 ± 0.0011 | +0.0067 | 0.9050 | 0.636 | 0.801 | +0.0065 / +0.0065 | −0.025 |
+
+Blend weight (`dyn`, 3 seeds, Δ old):
+
+| w | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | **0.8** | 1.0 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Δ sim | +0.0023 | +0.0034 | +0.0043 | +0.0051 | +0.0059 | +0.0065 | **+0.0065** | +0.0061 |
+| off | 0.8919 | 0.8940 | 0.8964 | 0.8989 | 0.9001 | 0.9012 | **0.9031** | 0.9046 |
+| rec<0.05 | 0.601 | 0.604 | 0.605 | 0.605 | 0.619 | 0.628 | **0.630** | 0.610 |
+
+* **The variants are within noise of each other.**
+  * `dyn` − all features: −0.0003 ± 0.0006.
+  * `dyn` − no context: +0.0002 ± 0.0003.
+  * 63 leaves − 31 leaves: +0.0006 ± 0.0006.
+  * Most of the gain is the field itself (+0.0052).
+  * The observed-queue features add the non-recurrent gain: rec<0.05 goes
+    from +0.014 (field only) to +0.030.
+* **The time and location context does not help the non-recurrent slices.**
+  It adds nothing on sim either. Dropping recurrence, time of day, weekend,
+  panel code and position (`dyn`) keeps sim and raises rec<0.05 by +0.009.
+  It also removes the features most exposed to the March shift. So `dyn` is
+  the candidate.
+* **The weight rule.** w = 0.8 is what the nested procedure picks when run on
+  all four folds (the argmax of old-truth sim). The nested estimate of that
+  procedure is +0.0065 ± 0.0009 (old) and +0.0068 (hybrid).
+
+### Where the gain comes from (`dyn`, w = 0.8)
+
+* **Folds:** +0.0071 / +0.0085 / +0.0041 / +0.0063 (hybrid +0.0076 / +0.0087 /
+  +0.0041 / +0.0069).
+* **Panels (plain mean):** 7 of 8 positive.
+  * D7_I210_E +0.020, D7_I10_E +0.016, D12_I5_N +0.007, D7_I405_N +0.006.
+  * D12_I5_S +0.004, D7_I210_W +0.003, D7_I405_S +0.001.
+  * D7_I10_W −0.004 ± 0.003.
+* **By stage-1 confidence** (the decoder's expected-IoU surrogate), sim
+  windows:
+
+  | stage-1 surrogate | windows | v5 IoU | Δ old | Δ hybrid | validation / private windows |
+  |---|---:|---:|---:|---:|---|
+  | ≤ 0.6 | 93 | 0.495 | +0.099 | +0.095 | 3 / 2 |
+  | 0.6-0.8 | 417 | 0.732 | +0.016 | +0.019 | 7 / 10 |
+  | 0.8-0.9 | 919 | 0.890 | +0.003 | +0.004 | 17 / 12 |
+  | 0.9-0.95 | 982 | 0.935 | +0.001 | +0.001 | 9 / 10 |
+  | > 0.95 | 590 | 0.962 | +0.001 | +0.001 | 4 / 6 |
+
+  The surrogate averages 0.831 on validation and 0.837 on private, against
+  0.872 on CV sim windows. Reweighting the per-bucket gains gives about
+  +0.012 (validation) and +0.010 (private) as plain means, against +0.007 on
+  the CV mix. This is indicative only: few windows.
+* **By true queue size.**
+  * ≤ 6 cells: +0.077 (67 windows).
+  * 6-12 cells: +0.091 (54 windows).
+  * 12-24: +0.007; 24-48: +0.005; 48-96: +0.000; > 96: +0.003.
+  * The small, dissipating queues that section 6 named the main error are
+    where it gains.
+* **It is not calibration.**
+  * Per-step isotonic calibration of v5, fitted out of fold: +0.0005 ± 0.0003.
+  * A logit bias on v5: at best +0.0002 (hybrid truth, +0.25), and negative
+    under the old truth.
+  * Stage 2 leaves the mean predicted set unchanged (147.9 cells per
+    window). It moves cells, it does not add them.
+* **Growth on the rec<0.05 windows.** Mean predicted cells per step, T+5 →
+  T+30:
+  * v5: 8.7 → 11.5;
+  * stack: 8.6 → 12.0;
+  * truth: 9.4 → 16.1.
+
+  Correct cells at T+30 rise from 10.33 to 10.58. The growth deficit is only
+  partly corrected.
+* **Watch: D7_I10_W non-recurrent windows.** 18 CV windows score −0.020 ±
+  0.014 (9 better, 7 worse). The other 60 rec<0.05 windows gain +0.046 ±
+  0.020. Every variant loses there, from −0.020 to −0.049, so the cause is
+  the field re-scoring, not the context features.
+  * The losses come from windows whose queue dissipated while the stack
+    extended it. Example: true cells 4 → 0 at T+30, 12 predicted.
+  * On average the stack moves D7_I10_W's growth toward the truth. New cells
+    at T+30 on the low-index side of the T+5 set: truth 111, v5 60, stack 78.
+  * On the five March D7_I10_W windows the stack changes cells both ways:
+    27 → 23, 38 → 43, 38 → 40, 11 → 11, 23 → 19 (agreement 0.69-0.95).
+  * This slice is the main risk for the March transfer.
+* **Surprise: queue growth is not always upstream.** In traffic direction,
+  new cells between T+5 and T+30 appear upstream of the T+5 set on
+  D12_I5_N, D7_I405_N, D7_I210_W and D7_I405_S. On D7_I10_E (94% of new
+  cells), D7_I210_E and D12_I5_S they appear downstream of it. D7_I10_W is
+  mixed. This was checked against the truth, and `core.direction` is
+  topology-based. A fixed "the tail moves upstream" rule would be wrong on
+  half the panels. Stage 2 learns the pattern from the field and the
+  observed geometry.
+
+### Decoder check (task 4): logit bias b before top-m
+
+Δ is against plain v5.
+
+| b | −0.5 | −0.25 | 0 | +0.25 | +0.5 | +0.75 | +1.0 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| v5, Δ old / hybrid | −0.0036 / −0.0070 | −0.0006 / −0.0024 | 0 / 0 | −0.0013 / +0.0002 | −0.0045 / −0.0018 | −0.0098 / −0.0056 | −0.0175 / −0.0120 |
+| `dyn` w=0.8, Δ old / hybrid | +0.0040 / +0.0014 | +0.0066 / +0.0049 | **+0.0065 / +0.0069** | +0.0052 / +0.0068 | +0.0018 / +0.0045 | −0.0029 / +0.0009 | −0.0088 / −0.0042 |
+| `dyn` w=0.8, off (old) | 0.8978 | 0.8977 | 0.9031 | 0.9041 | 0.9025 | 0.9012 | 0.8951 |
+
+b = 0 is the balanced optimum for the stacked probabilities. −0.25 suits only
+the old truth and +0.25 only the hybrid truth. No decoder change is proposed.
+
+### Gate and verdict
+
+| criterion | result |
+|---|---|
+| CV sim Δ (paired bootstrap) | +0.0065 ± 0.0009 old (7 SE), +0.0069 ± 0.0009 hybrid; nested +0.0065 / +0.0068 |
+| off | +0.0125 old, +0.0119 hybrid (0.9031 / 0.9057) |
+| rec<0.05 | +0.031 ± 0.016 old, +0.029 hybrid |
+| rec<0.2 | +0.020 ± 0.005 old, +0.019 hybrid |
+
+**Passes.** The candidate is `lgb_v9_ogstack08.csv`. Caveat: the
+D7_I10_W non-recurrent slice (−0.020 ± 0.014 on 18 windows) is the closest
+CV analogue of March's ongoing shift.
+
+### The file
+
+`/home/user/work/t2/lgb_v9_ogstack08.csv` is `lgb_v8_seeds9_stack03.csv` with
+only the ongoing rows replaced. It is built by `ongoing_v9.py`.
+* **Stage 1.** The v5 validation/private probabilities: the ongoing rows of
+  `probs_lgb_v5.parquet`. Decoding them reproduces the base file's 87,000
+  ongoing rows exactly.
+* **Stage 2.** `dyn` features, 3 seeds, trained on all 1.73 M OOF rows
+  (3,041 windows), predictions averaged. w = 0.8, then top-m decoding.
+* **Data rule.** Features of a validation/private window use only its stage-1
+  field and its own feature-table rows (released history, masked view at T,
+  full-train profile), plus static link data. That is data ≤ T only.
+
+Checks:
+* `submit.check`: 174,000 rows, 0 missing, 0 extra, binary, positive rate
+  0.0608.
+* Onset lines are byte-identical to the base file.
+
+Changes vs the base file (ongoing rows only):
+
+| split | windows changed (of 40) | cells changed | added / removed | ongoing cells, base → new | mean (min) window agreement |
+|---|---:|---:|---|---|---|
+| validation | 27 | 139 | 94 / 45 | 5,365 → 5,414 | 0.945 (0.667) |
+| private | 27 | 78 | 36 / 42 | 4,841 → 4,835 | 0.962 (0.500) |
+
+Largest changes:
+* D7_I10_W private 010: 14 → 7 cells.
+* D12_I5_N validation 009: 9 → 6.
+* D7_I210_E private 009: 15 → 22, the one private window with recurrence
+  < 0.05.
+* D7_I10_E validation 007 / 010: 121 → 148 and 137 → 159 (stage-1
+  surrogate 0.80 / 0.82).
+
+Other outputs:
+* **Probabilities:** `/home/user/work/t2/probs_v9_ogstack08_ongoing.parquet`,
+  with columns window_id, panel, k, link, p, p1, p2, split. It has the rows and
+  order of the `probs_lgb_v5` ongoing rows, and `p1` equals v5 exactly. The
+  stage-2 surrogate rises to 0.848 / 0.859 on validation / private.
+* **Models:** `/home/user/work/t2/model_v9_ogstack08_stage2_s{0,1,2}_queue_ongoing.txt`.
+
+Self-tests (`ongoing_v9 selftest`):
+* (a) The test-time feature path on shuffled rows with window_id keys equals
+  the training features exactly on D7_I10_W, D7_I405_N and D12_I5_S.
+* (b) The 10 official train windows per panel, run through the
+  released-history tables (`feat_<p>_train`), share 24,318 of 24,330 cells
+  with the training rows. Only the window aggregates touched by the 12
+  missing cells differ, and the recurrence differs by design (full-train
+  profile).
+* Re-decoding the saved probabilities reproduces the file byte for byte.
+
+**Expected effect.** The CV ongoing gain of +0.0065 is about S_queue +0.003.
+The gain sits in low-confidence and small-queue windows, which are
+over-represented in March and April. The per-bucket reweighting suggests
++0.010 to +0.012 on ongoing.
+
+### Reproduce
+
+```
+export PYTHONPATH=/home/user/knee OMP_NUM_THREADS=2 T2_THREADS=2 T2_WORK=/home/user/work/t2 T2_FEAT=/home/user/work/t2/feat_v3
+# OOF stage 2 + table vs v5 + nested weight; writes WORK/ogstack_oof_<tag>.parquet (~2 min per seed)
+python -m trafficflow.t2.og_stack dyn_s012 --seeds 0,1,2 --drop 'x_rec,x_tod,x_wkend,s_pcode,s_relpos'
+python -m trafficflow.t2.og_stack base_s012 --seeds 0,1,2
+python -m trafficflow.t2.og_stack noctx_s012 --seeds 0,1,2 --drop 'x_*,s_pcode,s_relpos'
+# single-seed variants (tags of the table)
+python -m trafficflow.t2.og_stack base_s0 --seeds 0
+python -m trafficflow.t2.og_stack w_s0 --seeds 0 --weighted
+python -m trafficflow.t2.og_stack comp_s0 --seeds 0 --comp
+python -m trafficflow.t2.og_stack loc_s0 --seeds 0 --loc
+python -m trafficflow.t2.og_stack nopcode_s0 --seeds 0 --drop s_pcode
+python -m trafficflow.t2.og_stack noctx_s0 --seeds 0 --drop 'x_*,s_pcode,s_relpos'
+python -m trafficflow.t2.og_stack field_s0 --seeds 0 --drop 'x_*,o_*,s_pcode,s_relpos'
+python -m trafficflow.t2.og_stack noctx_big_s0 --seeds 0 --leaves 63 --rounds 500 --drop 'x_*,s_pcode,s_relpos'
+python -m trafficflow.t2.og_stack table16 0.8          # the results table
+python -m trafficflow.t2.og_stack diag dyn_s012 0.8    # folds, panels, confidence, size, growth, calibration baselines
+python -m trafficflow.t2.og_stack bias dyn_s012 0.8    # decoder check
+python -m trafficflow.t2.og_stack watch 0.8 dyn_s012 base_s012 noctx_s012
+# candidate + probs_v9_<name>_ongoing.parquet + stage-2 models (~4 min)
+python -m trafficflow.t2.ongoing_v9 ogstack08 --stack 0.8 --seeds 0,1,2 --drop 'x_rec,x_tod,x_wkend,s_pcode,s_relpos'
+python -m trafficflow.t2.ongoing_v9 selftest
+```
+
+Resources:
+* Stage-2 CV peaks at about 2.1 GB RSS and the build at about 2 GB.
+* All runs used 2 threads.
+* Logs are in `/home/user/work/t2/logs_og9/`. Stage-2 OOFs are
+  `/home/user/work/t2/ogstack_oof_<tag>.parquet` (11 files, 27 MB each).

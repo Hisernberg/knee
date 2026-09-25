@@ -76,6 +76,7 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-25 08:44 | **F2** `F2_onset_site2.zip` | E1 with the onset decoded by `site2_lo.05_r.5` (commit to 1–2 sites; −11 hedge cells, 9 in 7 validation windows) | 0.86418 | 9/140 post-rebuild (E1) | −0.00173 → **March onset −0.012**: fewer hedges hurt too. Base stays E1 |
 | 2026-09-25 09:44 | **G1** `G1_tvsmooth.zip` | E1 + TV smoothing of the density inside runs of target cells (5.1M state rows, mean \|Δv\| 0.0066 km/h, \|Δq\| 11 veh/h) | **0.86651** | 9/140 post-rebuild | **+0.00060, exactly the local J prediction (+0.00062).** Base → G1 |
 | 2026-09-25 10:25 | **G2** `G2_onset_v8stack.zip` | G1 with onset = v8 `seeds9_stack03` (stage-2 stacking 0.3 + 9-seed stage 1; 15 onset cells, 11 in 4 validation windows) | **0.86711** | – | **+0.00060** → March onset about +0.004 (CV +0.0035 hybrid / +0.0024 old). Base → G2 |
+| 2026-09-25 10:16 | **G3** `G3_ongoing_stack.zip` | G2 with ongoing = v9 stage-2 stacking (217 ongoing cells, 139 in validation) | 0.86361 | – | **−0.00350 → March ongoing −0.023**, against CV +0.0065 ± 0.0009. Failed transfer; base stays G2 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |
@@ -257,3 +258,17 @@ The ongoing retrain on corrected labels (v7) was rejected: +0.0006 in the conser
 - blackout runs 5–9%.
 
 Only the within-run transitions (about 29% of the loss) can be smoothed. **LB: G1 +0.00060 against the local +0.00062.**
+
+## Day summary 2026-09-25: E1 0.86591 → G2 0.86711 (+0.0012), rank 9 of 140 post-rebuild
+| Step | Change | LB Δ | Local prediction | Verdict |
+|---|---|---|---|---|
+| F1 | onset logit bias +0.5 | −0.00235 | CV flat, off-windows + | decoder at its optimum |
+| F2 | onset site-commit decoder | −0.00173 | CV −0.0010 ± 0.0012 | decoder at its optimum |
+| G1 | Task 3 TV density smoothing | +0.00060 | +0.00062 | adopted |
+| G2 | onset v8 stacking + seeds | +0.00060 | about +0.0005 | adopted |
+| G3 | ongoing v9 stage-2 stacking | −0.00350 | +0.0010 (CV mix) to +0.0018 (reweighted) | failed transfer |
+
+- **Tasks 1/3.** The local proxy stays exact to within 0.0002.
+- **Task 2 onset.** Transfers roughly as predicted.
+- **Task 2 ongoing.** Gains that exist only on train months don't transfer. On March the stack extended growing queues on D7_I10_E and reshuffled small queues.
+- **Next step.** Make the Task 2 gate shift-aware: importance-weighted CV toward the validation and private window distributions, checked against today's four LB outcomes before it is trusted.

@@ -51,7 +51,7 @@ class Panel:
         self.length = fd.length_km.to_numpy(np.float32)
         self.vf = fd.free_speed_kmh.to_numpy(np.float32)
         self.cap = fd.capacity_vph.to_numpy(np.float32)
-        # per-lane triangular FD (the generator's own diagram, see docs/traffic/PLAN.md)
+        # per-lane triangular FD (the generator's own diagram, see trafficflow/docs/PLAN.md)
         self.kj_l = (fd.k_jam.to_numpy(np.float32) / self.lanes)
         self.kc_l = (self.cap / self.lanes) / np.maximum(self.vf, 1)
         self.w = (self.cap / self.lanes) / np.maximum(self.kj_l - self.kc_l, 1e-3)

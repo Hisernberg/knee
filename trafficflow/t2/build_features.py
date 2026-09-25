@@ -15,6 +15,7 @@ window history only.
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 
@@ -23,11 +24,17 @@ import pandas as pd
 
 from ..data import SLOTS
 from .baselines import NFOLD, fold_of
-from .core import K, PANELS8, FEAT, WORK, official_history, official_windows, statics
+from .core import K, PANELS8, FEAT, WORK, direction, official_history, official_windows, statics
 from .dataset import load_ds
 from ..data import load
 from .extra import MaskedView, extra_features
 from .features import _nearest_dist, expand_steps, profiles, window_link_features
+from .physics import lwr_features, onset_physics
+
+PHYSICS = os.environ.get("T2_PHYSICS", "0") == "1"   # v3 feature set (physics + LWR)
+NORMDIR = os.environ.get("T2_NORMDIR", "0") == "1"   # v4: traffic-direction normalised features
+ONLY = os.environ.get("T2_ONLY")                     # build one condition only (e.g. queue_onset)
+CONDS = (ONLY,) if ONLY else ("queue_onset", "queue_ongoing")
 
 MAX_CAND_ONGOING = 1200
 CHUNK = 150
@@ -40,8 +47,18 @@ def near_mask(df: pd.DataFrame) -> np.ndarray:
 
 
 def _rows(panel, hs, hf, he, hp, T, cond, prof, mv=None, y=None, wkey=None):
-    """Feature rows for a batch of windows of one condition."""
+    """Feature rows for a batch of windows of one condition. With T2_NORMDIR=1
+    the link axis of W/S panels is reversed before computing features, so every
+    directional feature means the same thing on every panel; the ``link``
+    column always holds the original link index."""
     L = hs.shape[2]
+    rev = NORMDIR and direction(panel) < 0
+    if rev:
+        hs, hf, he, hp = (a[:, :, ::-1] for a in (hs, hf, he, hp))
+        prof = {k: v[..., ::-1] for k, v in prof.items()}
+        mv = mv.flipped() if mv is not None else None
+        y = y[:, :, ::-1] if y is not None else None
+        panel = panel + "@rev"
     df, step = window_link_features(panel, hs, hf, he, hp, T, prof)
     n = hs.shape[0]
     if mv is not None:
@@ -54,8 +71,21 @@ def _rows(panel, hs, hf, he, hp, T, cond, prof, mv=None, y=None, wkey=None):
         for k_, v in F.items():
             df[k_] = np.asarray(v, np.float32).reshape(-1)
         step.update(st2)
+        if PHYSICS:
+            if cond == "queue_onset":
+                P = onset_physics(panel, hs, hf, he, r_now=F["r_now"], f_now=F["fT"])
+                for k_, v in P.items():
+                    df[k_] = v.reshape(-1)
+            else:
+                f_last = df.f_last.to_numpy().reshape(n, L)
+                f_now = np.where(np.isnan(F["fT"]), f_last, F["fT"]) * st["cap"].astype(np.float32)
+                Fl, Sl = lwr_features(panel, hs, hf, F["r_now"], f_now)
+                for k_, v in Fl.items():
+                    df[k_] = v.reshape(-1)
+                step.update(Sl)
     df["w"] = np.repeat(np.asarray(wkey), L)
-    df["link"] = np.tile(np.arange(L), n).astype(np.int16)
+    lk = np.arange(L)[::-1] if rev else np.arange(L)
+    df["link"] = np.tile(lk, n).astype(np.int16)
     if cond == "queue_onset":
         X = expand_steps(df, step, steps=[K])
         if y is not None:
@@ -85,7 +115,7 @@ def build_train(panel: str, seed: int = 0) -> pd.DataFrame:
     out = []
     for f in range(NFOLD):
         prof = profiles(A["qtrue"], None, dayfold != f)
-        for cond in ("queue_onset", "queue_ongoing"):
+        for cond in CONDS:
             ids = W.index[(W.fold == f) & (W.condition == cond)].to_numpy()
             for c0 in range(0, len(ids), CHUNK):
                 b = ids[c0:c0 + CHUNK]
@@ -114,7 +144,7 @@ def build_test(panel: str, split: str, mv: MaskedView | None = None) -> tuple[pd
     wi = official_windows(panel, split)
     hist = official_history(panel, split)
     out = []
-    for cond in ("queue_onset", "queue_ongoing"):
+    for cond in CONDS:
         sub = wi[wi.condition == cond]
         if not len(sub):
             continue

@@ -7,6 +7,9 @@ Stages (python -m trafficflow.t1_pipeline <stage> ...):
   train   pooled models on all panels: speed, flow (regular), gspeed, gflow (dark
           cells); `--holdout` keeps train days >= HOLD out for scoring.
   predict write WORK/pred/state_<tag>.parquet keyed like the Task 1 templates.
+  rounds  print the --rounds JSON of a full fit from holdout tag <tag> (full_rounds).
+  ens     state_<tag>.parquet = element-wise mean of state_<m>.parquet, --members m1 m2 ...
+TFB_SEED=s (default 0) trains seed-ensemble member s: other CAP row sample and LightGBM seeds.
 """
 from __future__ import annotations
 
@@ -89,6 +92,48 @@ def feat_panel(panel: str, seed: int = 0):
 
 
 NON_FEAT = {"panel", "t", "j", "kind", "day", "treg", "y_speed", "y_flow", "link_id", "y_dens"}
+USE_FD = os.environ.get("TFB_FD", "0") == "1"
+_FD_CACHE: dict = {}
+
+
+def fd_arrays(panel: str):
+    """Per-lane congested-branch parameters (w, k_jam) in milepost order (= column j)."""
+    if panel not in _FD_CACHE:
+        from .data import network
+        from .t1 import mileposts
+        net = network(panel)
+        o = np.argsort(mileposts(panel, net["links"]))
+        fd = net["fd"].iloc[o]
+        lanes = fd.lanes.to_numpy(float)
+        cap_l = fd.capacity_vph.to_numpy(float) / lanes
+        vf = fd.free_speed_kmh.to_numpy(float)
+        kj = fd.k_jam.to_numpy(float) / lanes
+        w = cap_l / np.maximum(kj - cap_l / np.maximum(vf, 1), 1e-3)
+        _FD_CACHE[panel] = (w.astype(np.float32), kj.astype(np.float32))
+    return _FD_CACHE[panel]
+
+
+def add_fd(d: pd.DataFrame) -> pd.DataFrame:
+    """Fundamental-diagram features computed from existing feature columns (same maths
+    as Panel.features with fd_features=True): congested-branch flow implied by speed,
+    speed implied by flow, and q/v density, for the interpolated / previous / next values."""
+    w = np.empty(len(d), np.float32); kj = np.empty(len(d), np.float32)
+    jj = d["j"].to_numpy()
+    for p, idx in d.groupby("panel").indices.items():
+        W, KJ = fd_arrays(p)
+        w[idx] = W[jj[idx]]; kj[idx] = KJ[jj[idx]]
+    vf = d["vf"].to_numpy(np.float32)
+    new = {"fd_w": w, "fd_kj": kj}
+    for src in ("li", "pv", "nv"):
+        v = d[f"{src}_speed"].to_numpy(np.float32); q = d[f"{src}_flow"].to_numpy(np.float32)
+        new[f"fd_qc_{src}"] = np.where(v < 0.9 * vf, v * (w * kj / (v + w)), np.nan).astype(np.float32)
+        new[f"fd_vc_{src}"] = (q / np.maximum(kj - q / w, 1e-2)).astype(np.float32)
+        new[f"fd_k_{src}"] = (q / np.maximum(v, 1)).astype(np.float32)
+    for dl in (-1, 1):
+        v = d[f"n{dl}_speed_0"].to_numpy(np.float32)
+        new[f"fd_qc_n{dl}"] = np.where(v < 0.9 * vf, v * w * kj / (v + w), np.nan).astype(np.float32)
+    new["v_over_vf_li"] = (d["li_speed"].to_numpy(np.float32) / vf).astype(np.float32)
+    return pd.concat([d, pd.DataFrame(new, index=d.index)], axis=1)
 
 
 CAP = {"reg": (int(os.environ.get("TFB_NREG", 150_000)), 100_000), "dark": (int(os.environ.get("TFB_NDARK", 150_000)), 60_000)}  # (train rows, holdout rows) per panel
@@ -111,6 +156,8 @@ def load_train(panels, kind, seed=0):
     d = pd.concat(dfs, ignore_index=True)
     d["panel_id"] = d.panel.map({p: i for i, p in enumerate(PANELS)}).astype("int16")
     d["y_dens"] = d.y_flow / np.maximum(d.y_speed, 1.0)
+    if USE_FD:
+        d = add_fd(d)
     return d
 
 
@@ -120,16 +167,30 @@ def base_of(d, c):
     return d[f"li_{c}"].fillna(d[f"h_{c}"]).to_numpy()
 
 
+# seed-ensemble member (trafficflow/docs/T1_ENSEMBLE.md): changes the CAP row sample in load_train and the
+# LightGBM seeds; 0 (default) = the original models bit-for-bit (LightGBM default seeds, rng seed 0)
+SEED = int(os.environ.get("TFB_SEED", "0"))
+
+
+def lgb_seeds(seed: int) -> dict:
+    """LightGBM seed parameters of ensemble member `seed`; {} for 0 (LightGBM defaults 1/2/3)."""
+    if seed == 0:
+        return {}
+    return dict(seed=seed, data_random_seed=100 * seed + 1, feature_fraction_seed=100 * seed + 2,
+                bagging_seed=100 * seed + 3)
+
+
 PARAMS = dict(objective="regression", learning_rate=float(os.environ.get("TFB_LR", 0.1)), num_leaves=255,
               min_data_in_leaf=100, feature_fraction=0.5, bagging_fraction=0.7, bagging_freq=1, lambda_l2=2.0, max_bin=63,
-              num_threads=int(os.environ.get("TFB_THREADS", "3")), verbose=-1)
+              num_threads=int(os.environ.get("TFB_THREADS", "3")), verbose=-1, **lgb_seeds(SEED))
 
 
 def train(panels, holdout: bool, tag: str, rounds: dict | None = None):
     mdir = WORK / "models" / tag; mdir.mkdir(parents=True, exist_ok=True)
     report = {}
+    print(f"train {tag}: seed {SEED}, lgb seeds {lgb_seeds(SEED) or 'default'}", flush=True)
     for kind, targets in (("reg", ("speed", "flow", "dens")), ("dark", ("speed", "flow", "dens"))):
-        d = load_train(panels, kind)
+        d = load_train(panels, kind, seed=SEED)
         feats = [c for c in d.columns if c not in NON_FEAT]
         tr = d.day < HOLD if holdout else np.ones(len(d), bool)
         va = d.day >= HOLD
@@ -179,6 +240,8 @@ def predict(panels, tag: str):
     for p in panels:
         d = pd.read_parquet(WORK / "feat" / f"{p}_test.parquet")
         d["panel_id"] = np.int16(PANELS.index(p))
+        if USE_FD:
+            d = add_fd(d)
         feats = models["reg_speed"].feature_name()
         sp = np.empty(len(d)); fl = np.empty(len(d)); dn = np.empty(len(d))
         for kind in ("reg", "dark"):
@@ -197,6 +260,40 @@ def predict(panels, tag: str):
     return res
 
 
+def full_rounds(report: dict, maxr: int = 3000) -> dict:
+    """Rounds of a full-data fit from a holdout report (the rule behind full3): 1.1 x the best iteration,
+    rounded to 10; a model whose early stopping ran into the round cap (best >= maxr - 20) gets 1.1 x maxr."""
+    return {k: int(round(1.1 * (maxr if v["best_iter"] >= maxr - 20 else v["best_iter"]), -1))
+            for k, v in report.items()}
+
+
+def ensemble(tag: str, members) -> None:
+    """WORK/pred/state_<tag>.parquet = element-wise mean of state_<m>.parquet over `members` for speed,
+    flow_lane and dens_lane; every other column must be identical (same rows in the same order)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    out = WORK / "pred"
+    vals = ("speed", "flow_lane", "dens_lane")
+    base = pq.read_table(out / f"state_{members[0]}.parquet")
+    acc = {c: base.column(c).to_numpy().astype(np.float64) for c in vals}
+    nan = {c: int(np.isnan(acc[c]).sum()) for c in vals}
+    for m in members[1:]:
+        t = pq.read_table(out / f"state_{m}.parquet")
+        assert t.column_names == base.column_names, f"{m}: columns {t.column_names} vs {base.column_names}"
+        for c in base.column_names:
+            if c not in vals:
+                assert t.column(c).equals(base.column(c)), f"{m}: column {c} differs from {members[0]}"
+        for c in vals:
+            x = t.column(c).to_numpy()
+            nan[c] += int(np.isnan(x).sum())
+            acc[c] += x
+        del t
+    for c in vals:
+        base = base.set_column(base.column_names.index(c), c, pa.array(acc[c] / len(members)))
+    pq.write_table(base, out / f"state_{tag}.parquet")
+    print(f"state_{tag}: mean of {list(members)}, {base.num_rows} rows, NaN in members {nan}", flush=True)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("stage")
@@ -204,6 +301,7 @@ if __name__ == "__main__":
     ap.add_argument("--tag", default="v1")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--rounds", default="{}", help='JSON {"reg_speed": 950, ...} for full fits')
+    ap.add_argument("--members", nargs="*", help="ens: state tags to average into state_<tag>")
     a = ap.parse_args()
     if a.stage == "feat":
         for p in a.panels:
@@ -213,3 +311,7 @@ if __name__ == "__main__":
         print(train(a.panels, a.holdout, a.tag, json.loads(a.rounds)))
     elif a.stage == "predict":
         predict(a.panels, a.tag)
+    elif a.stage == "rounds":  # full-fit --rounds JSON from a holdout tag's report
+        print(json.dumps(full_rounds(json.load(open(WORK / "models" / a.tag / "report.json")))))
+    elif a.stage == "ens":
+        ensemble(a.tag, a.members)

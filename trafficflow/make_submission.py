@@ -35,11 +35,14 @@ def fd_per_cell(pr: pd.DataFrame):
     return m.vf.to_numpy(), m.w.to_numpy(), m.kj.to_numpy()
 
 
-def state_frame(tag: str, a: float = 0.25, gate: float | None = None, fdband=None) -> pd.DataFrame:
+def state_frame(tag: str, a: float = 0.25, gate: float | None = None, fdband=None,
+                smooth: str | None = None) -> pd.DataFrame:
     """Task 1 rows. gate: reconcile (v, q) to the density model only where the
     predicted speed is below gate*v_f (dense traffic, where the density model is
     better than q/v); fdband=(lo, hi): inside lo..hi*v_f use the FD congested-branch
-    density w*kj/(v+w) instead of the density model."""
+    density w*kj/(v+w) instead of the density model. smooth: TV smoothing of the
+    density inside runs of target cells (t1_smooth; 'default' or 'key=value,...'),
+    applied after the gate and before clipping; None (default) leaves it off."""
     pr = pd.read_parquet(WORK / "pred" / f"state_{tag}.parquet")
     v0, q0 = pr.speed.values, pr.flow_lane.values
     if a is not None and "dens_lane" in pr:
@@ -55,6 +58,15 @@ def state_frame(tag: str, a: float = 0.25, gate: float | None = None, fdband=Non
             v, q = np.where(g, v, v0), np.where(g, q, q0)
     else:
         v, q = v0, q0
+    if smooth is not None:
+        from .t1_smooth import parse, smooth_frame
+        spec = parse(smooth)
+        if gate is not None and a is not None and "dens_lane" in pr:
+            sg = v0 < gate * vf
+        else:
+            sg = np.zeros(len(pr), bool)
+        print(f"state smoothing {spec} ({sg.sum()} gated cells)", flush=True)
+        v, q = smooth_frame(pr, v, q, sg, spec)
     pr["speed_kmh"] = np.clip(v, 3.0, 130.0)
     pr["flow_vph"] = np.clip(q * pr.lanes.values, 60.0, None)
     out = []
@@ -82,6 +94,9 @@ if __name__ == "__main__":
     ap.add_argument("--recon-a", type=float, default=0.25)
     ap.add_argument("--gate", type=float, default=None, help="reconcile only where speed < gate*v_f")
     ap.add_argument("--fdband", type=float, nargs=2, default=None, help="use FD density for lo..hi*v_f")
+    ap.add_argument("--smooth", default=None,
+                    help="TV smoothing of the density inside runs of target cells (trafficflow.t1_smooth): "
+                         "'default' or 'free=0.0075,free_a=0.001,gate=0.02,gate_a=0.005,dark=0.05'; off if omitted")
     ap.add_argument("--queue")
     ap.add_argument("--odme")
     ap.add_argument("--out", required=True)
@@ -91,7 +106,7 @@ if __name__ == "__main__":
     ap.add_argument("--note", default="")
     ap.add_argument("--force", action="store_true", help="write even if checks fail (deliberate probes only)")
     a = ap.parse_args()
-    st = state_frame(a.state_tag, a.recon_a, a.gate, a.fdband)
+    st = state_frame(a.state_tag, a.recon_a, a.gate, a.fdband, a.smooth)
     q = queue_frame(a.queue)
     o = odme_frame(a.odme)
     force = a.force

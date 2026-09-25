@@ -7,6 +7,8 @@ in CV) whose T+30 truth contains link l, restricted to origins within +-90 /
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -22,8 +24,12 @@ class OnsetPrior:
         z = np.load(WORK / f"ds_{panel}.npz", allow_pickle=True)
         src = z["w_src"]; cond = z["w_condition"]
         ref = np.flatnonzero((src == "cand") & (cond == "queue_onset"))
+        y = z["y"]
+        if os.environ.get("T2_TRUTH") == "y2":
+            y = np.load(WORK / f"ds_{panel}_y2.npz")["y"]
+            ref = ref[y[ref, K - 1].any(1)]
         self.T = z["w_T"][ref].astype(np.int64)
-        self.y6 = z["y"][ref, K - 1].astype(np.float32)
+        self.y6 = y[ref, K - 1].astype(np.float32)
         self.fold = fold_of(self.T)
         self.tod = self.T % SLOTS
         self.wk = ((self.T // SLOTS + 5) % 7) >= 5

@@ -28,7 +28,7 @@ S_total = 0.35 S_state + 0.30 S_queue + 0.15 S_physics + 0.20 S_ODME
    - Train has no such blackouts, so we simulate them (replicated window selector) and train a
      dedicated gap model. On one panel, interpolation gives 5.8 km/h RMSE and the gap model 5.36,
      against about 1.1 on regular cells. They dominate the MSE.
-3. **Task 4 truth = L2 projection of the split prior onto the split counts** (`docs/traffic/TASK4_ANALYSIS.md`).
+3. **Task 4 truth = L2 projection of the split prior onto the split counts** (`trafficflow/docs/TASK4_ANALYSIS.md`).
    - That hypothesis reproduces the published baseline 0.8359 (we get 0.8357) and the val/private
      gap of 0.008.
    - The projection scores about 1.000 against the baseline's 0.836, roughly **+0.033 total**.

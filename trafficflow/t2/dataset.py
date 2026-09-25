@@ -17,6 +17,7 @@ each with the history block exactly as a released window history would show it
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 
@@ -41,6 +42,12 @@ def build(panel: str, force: bool = False):
         return out
     t = time.time()
     P = PanelT2(panel)
+    q_old = None
+    src_q = os.environ.get("T2_TRUTHQ")   # e.g. /home/user/work/t2/ds_{panel}_y2.npz (truthfix hybrid truth)
+    if src_q:
+        z = np.load(src_q.format(panel=panel))
+        q_old = P.qtrue
+        P.qtrue = np.unpackbits(z["qtrue"], axis=1, count=int(z["L"])).astype(bool)[:q_old.shape[0]]
     st = P.selector_stats()
     sim = simulate_windows(P, st, range(0, 266))
     sim["src"] = "sim"
@@ -60,6 +67,9 @@ def build(panel: str, force: bool = False):
     W["T"] = W["T"].astype(np.int64)
     W = W.merge(st[["T", "cov", "nq", "maxl", "piou", "nfut", "nT"] + [f"n{k}" for k in range(1, K + 1)]], on="T", how="left")
     B = _blocks(P, W["T"].to_numpy())
+    if q_old is not None:   # the previous (time-first) truth of the same windows, for comparisons
+        fut = W["T"].to_numpy()[:, None] + np.arange(1, K + 1)[None, :]
+        B["y_old"] = q_old[fut]
     WORK.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out, **B, qtrue=np.packbits(P.qtrue, axis=1), L=P.L,
                         **{f"w_{c}": W[c].to_numpy() for c in W.columns})

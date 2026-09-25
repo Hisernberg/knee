@@ -1,3 +1,21 @@
+# Kraggle3in1 — Kaggle competition workspace
+
+One repository, one self-contained folder per competition. Code, configs, docs and submissions of a
+competition live only inside its folder; nothing is shared across folders.
+
+| Folder | Competition | Codename / package |
+|---|---|---|
+| repo root: `src/kneemri`, `configs/`, `docs/`, `kaggle/`, `scripts/`, `tests/` | [RSNA Knee Abnormality Detection](https://www.kaggle.com/competitions/rsna-knee-abnormality-detection) | `kneemri` (section below) |
+| [`umud/`](umud/README.md) | [UMUD Challenge: Muscle Architecture in Ultrasound Data](https://www.kaggle.com/competitions/umud-challenge-muscle-architecture-in-ultrasound-data) | `umud` (results: [`umud/RESULTS.md`](umud/RESULTS.md)) |
+| `trafficflow/` | traffic-flow forecasting competition | `trafficflow` |
+| [`cobalt_heron/`](cobalt_heron/README.md) | filament-segmentation-2026 | `ch` |
+| [`red_tape_raccoon/`](red_tape_raccoon/README.md) | chi-bench (IEEE Big Data Cup 2026) | red_tape_raccoon |
+
+Rules: never commit `kaggle.json`, API keys or competition data; Kaggle kernels are prefixed by their
+project (`umud-*`, `rsna-knee-*`, `ch-*`, `tfb-*`) so account-level kernel lists stay separable.
+
+---
+
 # RSNA Knee Abnormality Detection — `kneemri`
 
 Study-level detection of twelve knee MRI findings (macro ROC-AUC) for the Kaggle code competition

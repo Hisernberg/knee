@@ -106,3 +106,15 @@ benchmark (pipeline MT 0.50 mm vs DLTrack 1.03 mm), so next is MT 0.9 / 1.0.
 
 Prepared (`submissions/d4_*.csv`): S1 fixed (hybrid pipeline, failures → ref, w .56/.27/.75), S2 MT 1.0 (clip 4 mm),
 S2b MT 0.9, S3 FL clip 15 mm, S4 PA offset 0.8, and F (old pipeline with only the failure fix, as a fallback).
+
+## Day 4 (2026-09-25): fixes validated, rank 4
+| Shot | Change | Public LB |
+|---|---|---|
+| S1 | C9 + hybrid deep-band fix + failure rows → ref + w .56/.27/.75 | 0.32911 (−0.016 vs C9) |
+| **S2** | S1 with MT weight 1.0 (MT residual clip 4 mm) | **0.32182 (rank 4/293)** |
+| S3 | S2 + FL residual clip 15 mm | 0.33649 (FL outliers are mostly right → no clipping) |
+| S4 | S2 with MT weight 1.25 | 0.33096 (MT optimum ≈ 0.99 by quadratic fit) |
+| S5 | S2 with PA offset 0.8 (instead of 1.6) | 0.32618 (a larger PA offset looks better → test 2.4) |
+
+Reproduce S2: `python scripts/blend_v2.py --ref vera.csv --groups test_groups.npy --pipeline submissions/s17_Ahyb_pipeline.csv
+--features features_hyb.csv --w 0.56 0.27 1.0 --clip-mt 4 --out S2.csv`.

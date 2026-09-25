@@ -101,7 +101,31 @@ The two members disagree by about a third of their error (speed 0.66 against 1.9
 seed noise, the expected MSE reduction is var/2 = (0.66²/2)/2 ≈ 0.11 km²/h². The observed reduction is
 1.936² − 1.906² ≈ 0.11, which matches.
 
-TV_SENS_PLACEHOLDER
+**Do the TV thresholds need re-tuning for the mean?** All five thresholds of `t1_smooth.DEFAULT` were
+scaled by f. The table shows J on the mean(3, 4) predictions (results in
+`/home/user/work/t1/smooth/ens_tv_sens.csv`). To reproduce:
+
+```python
+from trafficflow.t1_smooth import DEFAULT
+from trafficflow.t1_smooth_eval import Hold
+H = Hold("D12_I5_S", ("hold3", "hold4")); v, q, g = H.base()
+f = 0.75
+spec = DEFAULT | {k: DEFAULT[k] * f for k in ("free", "free_a", "gate", "gate_a", "dark")}
+H.score(*H.smooth(v, q, g, **spec))
+```
+
+| f | D12_I5_S | D7_I10_W | D7_I405_S | D12_I405_N | mean ΔJ vs f = 1 |
+|---|---|---|---|---|---|
+| off | 0.38929 | 0.38953 | 0.38323 | 0.39383 | −0.00037 |
+| 0.5 | 0.38970 | 0.38994 | 0.38351 | 0.39423 | +0.00001 |
+| 0.75 | 0.38972 | 0.38998 | 0.38351 | 0.39425 | +0.00003 |
+| **1 (default)** | 0.38969 | 0.38999 | 0.38347 | 0.39421 | 0 |
+| 1.25 | 0.38964 | 0.38996 | 0.38340 | 0.39416 | −0.00005 |
+| 1.5 | 0.38957 | 0.38991 | 0.38332 | 0.39409 | −0.00011 |
+
+The optimum moves slightly toward weaker smoothing (f = 0.75: +0.00003 on 3/4 panels), as expected for
+smoother inputs. On hold3 alone, f = 1 remains the optimum. The difference is noise, so the ensemble
+keeps `--smooth default`.
 
 ## Is a third seed worth it?
 Mean J (adopted post-processing) over all member subsets of size k:
@@ -121,4 +145,59 @@ Mean J (adopted post-processing) over all member subsets of size k:
   idle, e.g. overnight. Run `TFB_SEED=2` → hold5/full5, then `ens hold3,hold4,hold5`. The same stage then
   measures 2 → 3 directly.
 
-FULL4_SECTION_PLACEHOLDER
+## full4 and the test ensemble
+- **Rounds.** full4 uses the rule behind full3 (`t1_pipeline.full_rounds`, stage `rounds`): 1.1 × the
+  hold best iteration, rounded to 10. A model whose early stopping ran into the 3000-round cap
+  (best ≥ 2980) gets 3300.
+  - Applied to the hold3 report, the rule reproduces the full3 tree counts exactly (910, 1040, 3300,
+    3300, 3270, 3300).
+  - From hold4: `{"reg_speed": 790, "reg_flow": 1320, "reg_dens": 3300, "dark_speed": 3300,
+    "dark_flow": 2460, "dark_dens": 3300}`.
+  - The full4 model files carry these tree counts and seed 1's LightGBM seeds.
+- **Ensemble.** `predict --tag full4` writes `state_full4.parquet`. Then
+  `ens --tag ens34 --members full3 full4` writes `state_ens34.parquet`:
+  - It asserts that both files have the same columns and identical key columns (panel, t, link_id,
+    regime, kind, lanes) in the same row order.
+  - It averages speed, flow_lane and dens_lane. The schema, dtypes and index are unchanged, so
+    make_submission reads it like any other state tag.
+- ENS_TEST_PLACEHOLDER
+- `seed.json` in a model directory records a non-zero seed (hold4, full4). `t1_holdout.score` reads it so
+  that the `hold_*.npy` rows line up with `load_train(..., seed)`. Seed-0 tags have no file and behave
+  as before.
+
+## Timings and resources
+2 threads (`TFB_THREADS=2`, `TFB_PRED_THREADS=2`, `OMP_NUM_THREADS=2`), on a machine shared with the
+Task 2 agent:
+
+| Step | Wall | Peak RSS |
+|---|---|---|
+| hold4 train (6 models, early stopping) | 75.6 min | 5.70 GB |
+| hold4 predictions at the holdout cells (4 panels; includes the hold3 recomputation check, about half the time) | 31 min | 1.31 GB |
+| `ens` evaluation (3 subsets × 2 post-processings × 4 panels) | 23 s | 0.32 GB |
+| TV sensitivity (2 × 6 variants × 4 panels) | 70 s | < 1 GB |
+| full4 train (6 models, fixed rounds) | 70.3 min | 4.76 GB |
+| TIMING_PLACEHOLDER
+
+Disk: models hold4 212 MB, full4 199 MB; state_full4 and state_ens34 about 170 MB each; holdout
+prediction caches `pred_hold4_<panel>.npz` 22 MB in total. DISK_PLACEHOLDER
+
+## Reproduce
+```
+cd /home/user/knee
+# 1. holdout member with seed 1 (hold3 recipe: TFB_FD=1, defaults otherwise)
+TFB_FD=1 TFB_SEED=1 TFB_THREADS=2 PYTHONPATH=. python -m trafficflow.t1_pipeline train --holdout --tag hold4
+# 2. its predictions at the cached full-coverage holdout cells (hold3 is recomputed and checked)
+PYTHONPATH=. python -m trafficflow.t1_smooth_eval preds hold4
+# 3. ensemble evaluation -> /home/user/work/t1/smooth/ens.csv, ens_raw.csv
+PYTHONPATH=. python -m trafficflow.t1_smooth_eval ens hold3,hold4
+# 4. full-data member, rounds from the hold4 report
+TFB_FD=1 TFB_SEED=1 TFB_THREADS=2 PYTHONPATH=. python -m trafficflow.t1_pipeline train --tag full4 \
+    --rounds "$(PYTHONPATH=. python -m trafficflow.t1_pipeline rounds --tag hold4)"
+TFB_FD=1 TFB_PRED_THREADS=2 PYTHONPATH=. python -m trafficflow.t1_pipeline predict --tag full4
+# 5. test ensemble and submission
+PYTHONPATH=. python -m trafficflow.t1_pipeline ens --tag ens34 --members full3 full4
+PYTHONPATH=. python -m trafficflow.make_submission --state-tag ens34 --recon-a 0.75 --gate 0.6 --smooth default \
+    --queue <queue csv> --odme /home/user/work/t4/t4_l2proj.csv --out <file>.csv
+```
+A third member is the same with `TFB_SEED=2` and tags hold5/full5. Then run
+`ens hold3,hold4,hold5` and `ens --tag ens345 --members full3 full4 full5`.

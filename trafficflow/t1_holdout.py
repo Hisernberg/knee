@@ -7,6 +7,7 @@ family-level mean, and error breakdown by traffic state.
 """
 from __future__ import annotations
 
+import json
 import sys
 
 import numpy as np
@@ -29,9 +30,11 @@ def reconcile(speed, flow, dens, a=0.25, clip=0.5):
 
 
 def score(tag: str, a=0.25):
+    sf = WORK / "models" / tag / "seed.json"  # seed-ensemble member (t1_pipeline TFB_SEED); absent = seed 0
+    seed = json.load(open(sf))["seed"] if sf.exists() else 0
     rows = []
     for kind in ("reg", "dark"):
-        d = load_train(PANELS, kind)
+        d = load_train(PANELS, kind, seed=seed)
         d = d[d.day >= HOLD].reset_index(drop=True)
         pr = {c: np.load(WORK / "models" / tag / f"hold_{kind}_{c}.npy") for c in ("speed", "flow", "dens")}
         d["p_speed"], d["p_flow"], d["p_dens"] = pr["speed"], pr["flow"], pr["dens"]

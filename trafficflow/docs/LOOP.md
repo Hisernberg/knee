@@ -13,6 +13,12 @@ This loop works only on the traffic project:
 - it never edits another competition's folder or the shared root files;
 - data and artefacts stay outside the repository (`/home/user/data`, `/home/user/cache`, `/home/user/work`).
 
+> **Research agents paused (2026-09-25 ~13:00 UTC).** The user stopped two research agents, the
+> Task 1 ensemble and the importance-weighted onset training.
+> - Do not launch new agents until the user asks again.
+> - The Routines still run the submission chain with already-validated candidates, plus light local
+>   work (builds, checks, logging, backups).
+
 ## Schedule (UTC; Routines fire into this session)
 | Time | Job |
 |---|---|
@@ -103,7 +109,7 @@ ongoing ≈ 0.840).
 | ID | Change vs best | Local evidence | Status |
 |---|---|---|---|
 | H1 (26 Sep, 00:07) | G2 + ongoing v10 `og_shrink08_rec05`: stage 2 may only remove v5 cells, only where recurrence ≥ 0.05. Removes 35 validation cells in 10 windows (42 private cells in 16 windows), all of them G3 removals. Build with `--queue /home/user/work/t2/lgb_v10_og_shrink08_rec05.csv` | plain +0.0029 ± 0.0005 old / +0.0023 hybrid; validation-weighted +0.0049 ± 0.0010; private-weighted +0.0035 ± 0.0006; footprint clean on both months | **probe-candidate.** Adopt if Δ ≥ +0.0005. If Δ ≤ −0.0006 (ongoing ≤ −0.004), drop the ongoing stack line entirely, final pick included |
-| – | Task 1 seed ensemble (hold4/full4, averaged with hold3/full3) | agent running | waiting |
+| H2 (26 Sep, 00:07) | G2 with Task 1 state = mean of full3 and full4, the seed ensemble (`--state-tag ens34`; built as `/home/user/work/subs/H2_t1ens34.zip` once the full4 prediction finishes) | holdout J +0.00077, 4/4 panels (+0.00063 to +0.00092; T1_ENSEMBLE.md) | **candidate.** Expected about +0.0008; adopt if Δ ≥ +0.0005 |
 
 ## Decision log
 | Date | Submission | Public (Δ vs best) | Decision / lesson |

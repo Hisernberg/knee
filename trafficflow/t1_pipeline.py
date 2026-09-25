@@ -187,6 +187,8 @@ PARAMS = dict(objective="regression", learning_rate=float(os.environ.get("TFB_LR
 
 def train(panels, holdout: bool, tag: str, rounds: dict | None = None):
     mdir = WORK / "models" / tag; mdir.mkdir(parents=True, exist_ok=True)
+    if SEED:  # the hold_*.npy rows follow load_train(..., seed=SEED); t1_holdout.score reads this
+        json.dump({"seed": SEED}, open(mdir / "seed.json", "w"))
     report = {}
     print(f"train {tag}: seed {SEED}, lgb seeds {lgb_seeds(SEED) or 'default'}", flush=True)
     for kind, targets in (("reg", ("speed", "flow", "dens")), ("dark", ("speed", "flow", "dens"))):

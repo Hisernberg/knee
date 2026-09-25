@@ -7,6 +7,12 @@ python -m trafficflow.t1_smooth_eval share <panels>   LWR error share by cell ty
                                                         change with the adopted smoothing
 python -m trafficflow.t1_smooth_eval grid <panels>    J / S_state / LWR per panel: smoothing variants and
                                                         the gate x recon-split grid (with / without smoothing)
+python -m trafficflow.t1_smooth_eval preds hold4 <panels>
+                                                      predictions of WORK/models/hold4 at the cached cells (same
+                                                        features; hold3 recomputed and checked) -> pred_hold4_<panel>.npz
+python -m trafficflow.t1_smooth_eval ens hold3,hold4 <panels>
+                                                      seed ensemble: every subset of the members (mean of raw
+                                                        speed / flow / density), with and without the TV smoothing
 Panels default to the four holdout panels; results go to WORK/smooth/*.csv.
 
 Scoring is exact on the holdout window (verified against evaluate.s_lwr_proxy): only transitions
@@ -29,19 +35,12 @@ NTR_DAY = 273
 HOLD_PANELS = ["D12_I5_S", "D7_I10_W", "D7_I405_S", "D12_I405_N"]
 
 
-def cache(panel: str, out=None):
-    import lightgbm as lgb
-    from .evaluate import link_ramp_validity
+def hold_features(panel: str):
+    """The cache's holdout protocol: Panel with the train blackouts plus 10 realistic holdout blackouts,
+    the target cells of the holdout window (days HOLD..NTR_DAY-1) and their features (FD columns included).
+    Returns (P, keep, tt, ll, X)."""
     from .t1 import Panel
-    from .t1_pipeline import add_fd, base_of
-    out = WORK / "smooth" if out is None else out
-    out.mkdir(parents=True, exist_ok=True)
-    f = out / f"hold3_{panel}.npz"
-    if f.exists():
-        return
-    t0 = time.time()
-    M = {f"{k}_{c}": lgb.Booster(model_file=str(WORK / "models" / "hold3" / f"{k}_{c}.txt"))
-         for k in ("reg", "dark") for c in ("speed", "flow", "dens")}
+    from .t1_pipeline import add_fd
     P = Panel(panel)
     orig = P.select_origins(0, NTR_DAY, spacing=36); ho = [o for o in orig if o[0] >= HOLD * SLOTS]
     keep = ho[::max(1, len(ho) // 10)][:10]
@@ -50,14 +49,38 @@ def cache(panel: str, out=None):
     tt, ll = np.nonzero(P.target[HOLD * SLOTS:ntr] > 0); tt = tt + HOLD * SLOTS
     X = P.features(tt, ll); X["panel_id"] = np.int16(PANELS.index(panel)); X["panel"] = panel; X["j"] = ll
     X = add_fd(X)
-    dark = P.dark[tt]; pr = {}
+    return P, keep, tt, ll, X
+
+
+def predict_cells(X, dark: np.ndarray, tag: str, threads: int = 2) -> dict:
+    """Raw speed / flow / density of WORK/models/<tag> at feature rows X (regular models on regular rows,
+    blackout models on blackout rows), as the pipeline's predict stage."""
+    import lightgbm as lgb
+    from .t1_pipeline import base_of
+    pr = {}
     for c in ("speed", "flow", "dens"):
-        y = np.full(len(tt), np.nan)
+        y = np.full(len(X), np.nan)
         for kind, m in (("reg", ~dark), ("dark", dark)):
             if m.any():
-                b = M[f"{kind}_{c}"]
-                y[m] = b.predict(X.loc[m, b.feature_name()], num_threads=2) + base_of(X[m], c)
+                b = lgb.Booster(model_file=str(WORK / "models" / tag / f"{kind}_{c}.txt"))
+                y[m] = b.predict(X.loc[m, b.feature_name()], num_threads=threads) + base_of(X[m], c)
+                del b
         pr[c] = y
+    return pr
+
+
+def cache(panel: str, out=None):
+    from .evaluate import link_ramp_validity
+    out = WORK / "smooth" if out is None else out
+    out.mkdir(parents=True, exist_ok=True)
+    f = out / f"hold3_{panel}.npz"
+    if f.exists():
+        return
+    t0 = time.time()
+    P, keep, tt, ll, X = hold_features(panel)
+    ntr = NTR_DAY * SLOTS
+    dark = P.dark[tt]
+    pr = predict_cells(X, dark, "hold3")
     del X
     on, off = link_ramp_validity(P.raw); rv = (on & off)[:, P.order]
     a0 = (HOLD - 1) * SLOTS
@@ -71,15 +94,65 @@ def cache(panel: str, out=None):
     print(panel, f"{len(tt)} cells, dark {dark.sum()}, {time.time() - t0:.0f}s", flush=True)
 
 
-class Hold:
-    """Cached holdout panel: predictions at target cells + everything the scorers need."""
+CH3 = ("speed", "flow", "dens")
 
-    def __init__(self, panel: str):
+
+def preds(panel: str, tags, check: bool = True):
+    """Raw predictions of WORK/models/<tag> at the cached holdout cells -> WORK/smooth/pred_<tag>_<panel>.npz.
+
+    The features are rebuilt with the cache protocol (hold_features); with `check`, the hold3 predictions are
+    recomputed from them and must equal the cached ones exactly (same cells, same features)."""
+    out = WORK / "smooth"
+    todo = [t for t in tags if t != "hold3" and not (out / f"pred_{t}_{panel}.npz").exists()]
+    if not todo:
+        return
+    t0 = time.time()
+    z = np.load(out / f"hold3_{panel}.npz")
+    P, keep, tt, ll, X = hold_features(panel)
+    assert np.array_equal(tt, z["tt"]) and np.array_equal(ll, z["ll"]), f"{panel}: target cells differ from the cache"
+    assert np.array_equal(np.array([o[0] for o in keep]), z["keep"]), f"{panel}: holdout blackouts differ"
+    dark = P.dark[tt]
+    del P; gc.collect()
+    t1 = time.time()
+    if check:
+        pr = predict_cells(X, dark, "hold3")
+        same = all(np.array_equal(pr[c], z[c], equal_nan=True) for c in CH3)
+        print(f"{panel}: hold3 recomputed == cache: {same}", flush=True)
+        assert same, f"{panel}: recomputed hold3 predictions differ from the cache"
+    for tag in todo:
+        pr = predict_cells(X, dark, tag)
+        np.savez_compressed(out / f"pred_{tag}_{panel}.npz", tt=tt, ll=ll, **pr)
+    print(f"{panel}: preds {todo}, {len(tt)} cells, features {t1 - t0:.0f}s, total {time.time() - t0:.0f}s", flush=True)
+
+
+def load_preds(panel: str, tag: str) -> dict:
+    """Raw predictions of one model set at the cached cells ('hold3': the cache itself)."""
+    z = np.load(WORK / "smooth" / f"hold3_{panel}.npz")
+    if tag == "hold3":
+        return {k: z[k] for k in CH3}
+    y = np.load(WORK / "smooth" / f"pred_{tag}_{panel}.npz")
+    assert np.array_equal(y["tt"], z["tt"]) and np.array_equal(y["ll"], z["ll"]), f"{tag} {panel}: cells differ"
+    return {k: y[k] for k in CH3}
+
+
+def mean_preds(prs: list) -> dict:
+    """Element-wise mean of raw prediction dicts (a single member is returned as is)."""
+    if len(prs) == 1:
+        return prs[0]
+    return {k: np.mean([p[k] for p in prs], 0) for k in CH3}
+
+
+class Hold:
+    """Cached holdout panel: predictions at target cells + everything the scorers need.
+
+    tags: model sets whose raw predictions are averaged (default: the cached hold3 predictions)."""
+
+    def __init__(self, panel: str, tags=("hold3",)):
         z = np.load(WORK / "smooth" / f"hold3_{panel}.npz")
         self.panel = panel
         a0 = int(z["a0"])
         self.r, self.c = z["tt"] - a0, z["ll"]
-        self.pr = {k: z[k] for k in ("speed", "flow", "dens")}
+        self.pr = {k: z[k] for k in CH3} if tuple(tags) == ("hold3",) else mean_preds([load_preds(panel, t) for t in tags])
         self.lanes = z["lanes"].astype(np.float64); self.length = z["length"].astype(np.float64)
         self.vf = z["vf"].astype(np.float64)
         ts = z["ts"].astype(np.float64); tq = z["tq"].astype(np.float64)
@@ -269,6 +342,78 @@ def grid(panels, variants: dict = VARIANTS, out: str | None = "variants.csv"):
     return d
 
 
+def ens(panels, members=("hold3", "hold4"), out: str | None = "ens.csv"):
+    """Seed-ensemble evaluation (docs/traffic/T1_ENSEMBLE.md).
+
+    For every non-empty subset of `members` (a subset = element-wise mean of its members' raw speed / flow /
+    density, before any post-processing): J / S_state / LWR per panel with the adopted post-processing
+    (post 'gate+TV': reconcile at v < 0.6 v_f with a 0.75, then TV smoothing DEFAULT) and without the
+    smoothing (post 'gate'). Deltas are vs the first member. Also prints the raw RMSE of each member, of the
+    mean, and the RMS disagreement of the first two members, and the mean J by ensemble size k with the
+    1/M projection (J_M = J_inf - c/M) of the gain from one more member."""
+    import itertools
+    import pandas as pd
+    members = tuple(members)
+    rows, raw = [], []
+    for p in panels:
+        t0 = time.time()
+        H = Hold(p)
+        P = {t: load_preds(p, t) for t in members}
+        truth = {"speed": H.ys, "flow": H.yq, "dens": H.yq / np.maximum(H.ys, 1.0)}
+        for k in range(1, len(members) + 1):
+            for s in itertools.combinations(members, k):
+                H.pr = mean_preds([P[t] for t in s])
+                name = "+".join(s)
+                for c in CH3:
+                    raw.append(dict(panel=p, members=name, k=k, channel=c,
+                                    rmse=float(np.sqrt(np.nanmean((H.pr[c] - truth[c]) ** 2)))))
+                v, q, g = H.base()
+                rows.append(dict(panel=p, members=name, k=k, post="gate", **H.score(v, q)))
+                v, q = H.smooth(v, q, g, **DEFAULT)
+                rows.append(dict(panel=p, members=name, k=k, post="gate+TV", **H.score(v, q)))
+        if len(members) > 1:
+            a, b = P[members[0]], P[members[1]]
+            for c in CH3:
+                raw.append(dict(panel=p, members=f"diff {members[0]}-{members[1]}", k=0, channel=c,
+                                rmse=float(np.sqrt(np.nanmean((a[c] - b[c]) ** 2)))))
+        print(f"{p}: {time.time() - t0:.0f}s", flush=True)
+        del H, P; gc.collect()
+    d = pd.DataFrame(rows)
+    ref = d[d.members == members[0]].set_index(["panel", "post"])
+    key = pd.MultiIndex.from_frame(d[["panel", "post"]])
+    for c in ("J", "S_state", "LWR"):
+        d["d" + c] = d[c].to_numpy() - ref[c].reindex(key).to_numpy()
+    r = pd.DataFrame(raw)
+    if out:
+        d.to_csv(WORK / "smooth" / out, index=False)
+        r.to_csv(WORK / "smooth" / out.replace(".csv", "_raw.csv"), index=False)
+    order = list(dict.fromkeys(d.members))
+    for post in ("gate+TV", "gate"):
+        x = d[d.post == post]
+        for c, sc in (("J", 5), ("S_state", 5), ("LWR", 4)):
+            piv = x.pivot_table(index="members", columns="panel", values=c).reindex(order)[panels]
+            dp = x.pivot_table(index="members", columns="panel", values="d" + c).reindex(order)[panels]
+            piv["mean"] = piv.mean(axis=1)
+            piv[f"mean d{c}"] = dp.mean(axis=1)
+            if c == "J":
+                piv["n_up"] = (dp > 0).sum(axis=1)
+            print(f"--- {post}: {c} (d vs {members[0]})"); print(piv.round(sc).to_string(), flush=True)
+    print("--- raw RMSE at the holdout target cells (speed km/h, flow veh/h/lane, density veh/km/lane)")
+    print(r.pivot_table(index="members", columns=["channel", "panel"], values="rmse", sort=False).round(4).to_string(),
+          flush=True)
+    M = len(members)
+    if M > 1:
+        x = d[d.post == "gate+TV"].groupby(["panel", "k"]).J.mean().unstack("k")[range(1, M + 1)].reindex(panels)
+        c_ = (x[M] - x[1]) * M / (M - 1)  # J_M = J_inf - c/M fitted on k = 1 and k = M
+        x[f"proj {M + 1}"] = x[M] + c_ / (M * (M + 1))
+        x.loc["mean"] = x.mean()
+        print(f"--- gate+TV: mean J over members subsets of size k; 'proj {M + 1}' = 1/M projection of one more member")
+        print(x.round(5).to_string())
+        print("gain 1 -> 2 (mean over panels):", round(float(x.loc["mean", 2] - x.loc["mean", 1]), 6),
+              f"| projected {M} -> {M + 1}:", round(float(x.loc["mean", f"proj {M + 1}"] - x.loc["mean", M]), 6), flush=True)
+    return d, r
+
+
 if __name__ == "__main__":
     stage, panels = sys.argv[1], sys.argv[2:] or HOLD_PANELS
     if stage == "cache":
@@ -278,3 +423,10 @@ if __name__ == "__main__":
         share_table(panels)
     elif stage == "grid":
         grid(panels)
+    elif stage in ("preds", "ens"):  # preds <tag>[,<tag>...] [panels] / ens <tag>,<tag>[,...] [panels]
+        tags, panels = sys.argv[2].split(","), sys.argv[3:] or HOLD_PANELS
+        if stage == "preds":
+            for p in panels:
+                preds(p, tags); gc.collect()
+        else:
+            ens(panels, tags)

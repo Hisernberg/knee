@@ -1,6 +1,6 @@
 """Daily submission loop: guarded Kaggle submissions, diffs, status and rank.
 
-The runbook is docs/traffic/LOOP.md. Every submission goes through `submit`, which
+The runbook is trafficflow/docs/LOOP.md. Every submission goes through `submit`, which
 refuses:
 - a file whose checks failed (unless --probe);
 - a duplicate;
@@ -37,8 +37,7 @@ LAST_SUBMIT = dt.time(23, 45)
 DEADLINE = dt.datetime(2026, 11, 7, 6, 55)
 SUBS = Path("/home/user/work/subs")
 LB = Path("/home/user/research/lb")
-REPO = Path(__file__).resolve().parents[1]
-LOG = REPO / "docs" / "traffic" / "lb_log.csv"
+LOG = Path(__file__).resolve().parent / "docs" / "lb_log.csv"
 CRITICAL = ["/home/user/data/kaggle_public/submission_key.csv", "/home/user/cache",
             "/home/user/work/t1/pred/state_full3.parquet", "/home/user/work/t2/lgb_v6.csv",
             "/home/user/work/t2h/probs_v6_onset.parquet", "/home/user/work/t4/t4_l2proj.csv"]

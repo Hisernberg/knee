@@ -4,8 +4,14 @@ Goal: every UTC day, submit up to 5 files, each one locally validated and each c
 factor. Submit one at a time, read the score, learn, report. Runs until the deadline, 2026-11-07
 06:55 UTC.
 
-Helpers: `trafficflow/loop.py` (`status`, `pack`, `diff`, `submit`, `rank`). Run everything from
-`/home/user/knee` with `PYTHONPATH=.`.
+Helpers: `trafficflow/loop.py` (`status`, `pack`, `diff`, `submit`, `rank`, `backup`). Run everything
+from the repository root with `PYTHONPATH=.`.
+
+**Scope.** The repository (`Hisernberg/kraggle-3-in-one`) holds several competitions, one folder each.
+This loop works only on the traffic project:
+- everything it creates or edits lives in `trafficflow/`, with docs in `trafficflow/docs/`;
+- it never edits another competition's folder or the shared root files;
+- data and artefacts stay outside the repository (`/home/user/data`, `/home/user/cache`, `/home/user/work`).
 
 ## Schedule (UTC; Routines fire into this session)
 | Time | Job |
@@ -30,8 +36,8 @@ Background agents and jobs wake the session when they finish, so work continues 
    Add `--probe` for probes. After each score, apply the adoption rule, then rebuild the next
    candidate on the new best if the best changed.
 5. After the firing's last submission, run `python3 -m trafficflow.loop rank`.
-6. Update `docs/traffic/EXPERIMENTS.md` (LB log rows and what was learned) and this file (best,
-   queue, decision log). Commit and push to `claude/focused-allen-uzq8gr`. No PR actions.
+6. Update `trafficflow/docs/EXPERIMENTS.md` (LB log rows and what was learned) and this file (best,
+   queue, decision log). Commit and push to `claude/focused-allen-uzq8gr`. Pushes update the open draft PR; merging is the user's call.
 7. Report in the chat:
    - a table of submission, change, public score, Δ and post-rebuild rank;
    - the best so far and the gap to #1;
@@ -58,7 +64,7 @@ The build takes about 2.5 min, of which the smoothing is about 150 s.
 
 - **Task 1:** `full3` LightGBM models (FD features, `TFB_FD=1`).
   - Density reconciliation applies only where v < 0.6·v_f, with speed/flow split a = 0.75.
-  - Then total-variation (TV) smoothing of the density inside runs of target cells (`trafficflow/t1_smooth.py`, docs/traffic/T3_SMOOTHING.md).
+  - Then total-variation (TV) smoothing of the density inside runs of target cells (`trafficflow/t1_smooth.py`, trafficflow/docs/T3_SMOOTHING.md).
 - **Task 2:** `lgb_v8_seeds9_stack03` (TASK2_ANALYSIS.md section 15).
   - Onset: 0.7 × stage 1 + 0.3 × stage-2 stacking. Stage 1 is 0.75 × six on_v3 seeds + 0.25 × three on_v2 seeds, all on hybrid labels. Top-m decoding at bias 0; cap any bias at +0.25.
   - Ongoing: the v5 blend, unchanged since v5.

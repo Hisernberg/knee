@@ -31,7 +31,7 @@ Error budget (regular cells):
 - Observed |ΔN|/N per step is 4.4%. The topology-based flux correlates with ΔN at only 0.06, so the
   organizer's flux must absorb the noise, which is why the proxy is valid.
 
-## Task 2 (agent report, docs/traffic/TASK2_ANALYSIS.md)
+## Task 2 (agent report, trafficflow/docs/TASK2_ANALYSIS.md)
 CV S_queue on 5,083 selector-replicated windows (official aggregation):
 
 | Method | S_queue (sim) |
@@ -42,7 +42,7 @@ CV S_queue on 5,083 selector-replicated windows (official aggregation):
 | lgb_v2 | 0.788 |
 | **lgb_v3** | **0.795** (onset 0.713, ongoing 0.877) |
 
-## Task 4 (agent report, docs/traffic/TASK4_ANALYSIS.md)
+## Task 4 (agent report, trafficflow/docs/TASK4_ANALYSIS.md)
 The L2 projection of the split prior onto the split counts reproduces the published baseline S_ODME
 (0.8357 vs 0.8359). Expected S_ODME is about 1.000.
 
@@ -138,7 +138,7 @@ Full-coverage holdout, realistic blackouts, gate 0.6. J = 0.35·S_state + 0.10·
 a = 0.75 improves S_state on 4/4 panels (mean +0.0018, about +0.0006 total). In queues, flow sits near discharge capacity while speed carries the uncertainty. **Adopted** (`--recon-a 0.75 --gate 0.6`).
 
 ## Task 2 v5 (2026-09-23 evening, agent)
-CV on sim / official windows. Details in docs/traffic/TASK2_ANALYSIS.md section 12.
+CV on sim / official windows. Details in trafficflow/docs/TASK2_ANALYSIS.md section 12.
 
 | Slice | v4 (in B1) | v5 |
 |---|---|---|
@@ -232,7 +232,7 @@ The ongoing retrain on corrected labels (v7) was rejected: +0.0006 in the conser
 - The official train windows prefer larger sets for both conditions. That preference did not transfer to the LB for onset, so it is an artefact of our truth on those windows (5-minute selector shifts), not a property of the official truth.
 - No ongoing bias probe was spent.
 
-## Task 3: TV density smoothing (2026-09-25, agent; details in docs/traffic/T3_SMOOTHING.md)
+## Task 3: TV density smoothing (2026-09-25, agent; details in trafficflow/docs/T3_SMOOTHING.md)
 **The method:**
 - Total-variation smoothing of the per-lane density k = q/v inside each run of consecutive target cells on a link. Small increments inside a run are set to zero; queue fronts are kept.
 - The threshold is τ × the run's mean density: free-flow 0.0075, gate (v < 0.6·v_f) 0.02, blackout 0.05. Weak L1 anchors tie the run ends to the observed neighbours.

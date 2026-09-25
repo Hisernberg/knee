@@ -12,7 +12,7 @@ optional weak L1 anchors to the observed neighbour densities (`smooth_cells`, sp
 speed share a_in inside the density gate (as t1_holdout.reconcile) and a_out outside.
 
 A quadratic (Whittaker) smoother `smooth_runs` is kept for the record; it is worse
-(see docs/traffic/T3_SMOOTHING.md).
+(see trafficflow/docs/T3_SMOOTHING.md).
 
 All arrays are dense [T, L] windows in any fixed link order (one column = one link).
 """
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-# holdout-selected setting (docs/traffic/T3_SMOOTHING.md): relative TV thresholds per cell category
+# holdout-selected setting (trafficflow/docs/T3_SMOOTHING.md): relative TV thresholds per cell category
 DEFAULT = dict(free=0.0075, free_a=0.001, gate=0.02, gate_a=0.005, dark=0.05, dark_a=0.0,
                a_in=0.75, a_out=0.0, clip=0.5, iters=300)
 

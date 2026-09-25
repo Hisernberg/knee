@@ -167,7 +167,7 @@ def base_of(d, c):
     return d[f"li_{c}"].fillna(d[f"h_{c}"]).to_numpy()
 
 
-# seed-ensemble member (docs/traffic/T1_ENSEMBLE.md): changes the CAP row sample in load_train and the
+# seed-ensemble member (trafficflow/docs/T1_ENSEMBLE.md): changes the CAP row sample in load_train and the
 # LightGBM seeds; 0 (default) = the original models bit-for-bit (LightGBM default seeds, rng seed 0)
 SEED = int(os.environ.get("TFB_SEED", "0"))
 

@@ -343,7 +343,7 @@ def grid(panels, variants: dict = VARIANTS, out: str | None = "variants.csv"):
 
 
 def ens(panels, members=("hold3", "hold4"), out: str | None = "ens.csv"):
-    """Seed-ensemble evaluation (docs/traffic/T1_ENSEMBLE.md).
+    """Seed-ensemble evaluation (trafficflow/docs/T1_ENSEMBLE.md).
 
     For every non-empty subset of `members` (a subset = element-wise mean of its members' raw speed / flow /
     density, before any post-processing): J / S_state / LWR per panel with the adopted post-processing

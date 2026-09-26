@@ -56,29 +56,28 @@ Background agents and jobs wake the session when they finish, so work continues 
    (**Backup** below).
 
 ## Current best
-**`G2_onset_v8stack.zip` = 0.86711** (2026-09-25). #1 post-rebuild is 0.88849.
+**`H2_t1ens34.zip` = 0.86777** (2026-09-26). Post-rebuild rank 10 of 151; #1 KTK 0.90033 (gap 0.0326).
 
 Build:
 ```
-python3 -m trafficflow.make_submission --state-tag full3 --recon-a 0.75 --gate 0.6 \
+python3 -m trafficflow.make_submission --state-tag ens34 --recon-a 0.75 --gate 0.6 \
   --smooth "free=0.0075,free_a=0.001,gate=0.02,gate_a=0.005,dark=0.05" \
   --queue /home/user/work/t2/lgb_v8_seeds9_stack03.csv --odme /home/user/work/t4/t4_l2proj.csv \
   --out /home/user/work/subs/<ID>.csv --note "<ID>: ..."
 python3 -m trafficflow.loop pack /home/user/work/subs/<ID>.csv
 ```
-The build takes about 2.5 min, of which the smoothing is about 150 s.
 
-- **Task 1:** `full3` LightGBM models (FD features, `TFB_FD=1`).
-  - Density reconciliation applies only where v < 0.6·v_f, with speed/flow split a = 0.75.
-  - Then total-variation (TV) smoothing of the density inside runs of target cells (`trafficflow/t1_smooth.py`, trafficflow/docs/T3_SMOOTHING.md).
-- **Task 2:** `lgb_v8_seeds9_stack03` (TASK2_ANALYSIS.md section 15).
-  - Onset: 0.7 × stage 1 + 0.3 × stage-2 stacking. Stage 1 is 0.75 × six on_v3 seeds + 0.25 × three on_v2 seeds, all on hybrid labels. Top-m decoding at bias 0; cap any bias at +0.25.
-  - Ongoing: the v5 blend, unchanged since v5.
-  - Val/private probabilities: `work/t2h/probs_v8_seeds9_stack03_onset.parquet`, `work/t2/probs_lgb_v5.parquet`.
+- **Task 1:** mean of the `full3` and `full4` LightGBM model sets.
+  - FD features; `TFB_SEED` 0 / 1.
+  - `state_ens34.parquet` comes from `t1_pipeline ens --tag ens34 --members full3 full4`.
+  - Density reconciliation where v < 0.6·v_f (a = 0.75), then TV smoothing.
+- **Task 2:** `lgb_v8_seeds9_stack03`.
+  - Onset v8: stacking + 9 seeds on hybrid labels.
+  - Ongoing: the v5 blend.
 - **Task 4:** L2 projection.
 
-G2 by task: ODME 0.1988 (task score 0.994), Task 1+3 ≈ 0.4325, queue ≈ 0.2358 (onset ≈ 0.732,
-ongoing ≈ 0.840).
+Exact decomposition: ODME 0.19876, Task 1+3 0.43268, queue 0.23633 (S_queue 0.7878: onset 0.732,
+ongoing 0.843).
 
 ## Gates
 **Candidate:** one locally validated change against the current best.
@@ -106,15 +105,8 @@ ongoing ≈ 0.840).
 - a blind resubmission after an ERROR.
 
 ## Candidate queue
-**Chain for 2026-09-26 00:07.** All files are pre-built in `/home/user/work/subs`, each with 65/65 checks and a single-factor diff.
-1. **H2** `H2_t1ens34.zip` (against G2; state rows only): Task 1 state = mean of full3 and full4, the seed ensemble (`--state-tag ens34`).
-   - Evidence: holdout J +0.00077 on 4/4 panels (T1_ENSEMBLE.md).
-   - Expected about +0.0008; adopt if Δ ≥ +0.0005.
-2. **H1** (ongoing v10 `og_shrink08_rec05`: stage 2 may only remove v5 cells, only where recurrence ≥ 0.05; 77 ongoing cells, 35 of them in validation).
-   - Which file: if H2 was adopted, submit `H1b_og_shrink_on_ens34.zip` (against H2). Otherwise submit `H1_og_shrink.zip` (against G2).
-   - Evidence: plain +0.0029 ± 0.0005; validation-weighted +0.0049 ± 0.0010; private-weighted +0.0035 ± 0.0006; footprint clean.
-   - Adopt if Δ ≥ +0.0005. If Δ ≤ −0.0006 (ongoing ≤ −0.004), drop the ongoing stack line entirely, final pick included.
-3. **Slots 3–5.** No validated candidates while agents are paused. Use a slot only for a probe that answers an open question. One option: the current best with the queue zeroed, which pins the exact March S_queue and ongoing level. Otherwise leave the slots unused.
+**Empty.** Research agents are paused (see the note at the top), so no new candidates are being built.
+Unused slots are only spent on probes that answer an open question.
 
 ## Decision log
 | Date | Submission | Public (Δ vs best) | Decision / lesson |
@@ -123,6 +115,10 @@ ongoing ≈ 0.840).
 | 09-25 | F2: onset site-commit decoder `site2_lo.05_r.5` (−11 hedge cells) | 0.86418 (−0.00173) | Fewer hedges hurt too (onset −0.012). Top-m at b = 0 is optimal on March from both sides; onset gains must come from better probabilities, not decoding |
 | 09-25 | **G1: E1 + TV density smoothing inside target runs** (state rows only) | **0.86651 (+0.00060)** | Local J predicted +0.00062. **Adopted: new best.** The Task 3 proxy predicts the LB to within 0.00002 |
 | 09-25 | **G2: G1 + onset v8** (stacking 0.3 + 9-seed mix; 15 cells, 11 in 4 validation windows) | **0.86711 (+0.00060)** | CV onset +0.0035 hybrid / +0.0024 old, i.e. about +0.0005 total. **Adopted: new best.** Shape-aware hedges from stage 2 help on March, where F1's blanket bias hurt |
+| 09-26 | **H2: G2 + Task 1 seed ensemble** (state rows only) | **0.86777 (+0.00066)** | local J +0.00077. **Adopted: new best** |
+| 09-26 | H1b: H2 + ongoing v10 (stage 2 may only remove cells, recurrence ≥ 0.05) | 0.86629 (−0.00148) | Passed the new Task 2 gate and still failed (ongoing −0.010). **Ongoing stacking line dropped, final pick included.** Ongoing changes are LB probes first from now on |
+| 09-26 | P5 probe: H2 + TV smoothing ×3 | 0.86736 (−0.00041) | local −0.00062. The official Task 3 truth behaves like the train truth, and the smoothing strength is at or near its optimum |
+| 09-26 | P6 probe: H2 with the queue zeroed | 0.63144 | S_queue(H2) 0.7878 exactly (onset 0.732, ongoing 0.843) |
 | 09-25 | G3: G2 + ongoing v9 stage-2 stacking (217 ongoing cells, 139 in validation) | 0.86361 (−0.00350) | CV +0.0065 ± 0.0009 (7 SE) but **March ongoing −0.023**. Not adopted, and not on the robust list. The stack extends queues (D7_I10_E +22 to +27 cells per window) and reshuffles small ones (D7_I10_W, D12_I5_N). Train-month growth patterns don't hold in the shifted months. **Lesson: plain CV cannot gate Task 2 ongoing changes; build a shift-weighted CV first** |
 
 ## Robust list (final-selection pool)

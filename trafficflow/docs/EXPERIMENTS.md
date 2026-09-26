@@ -77,6 +77,10 @@ That compares with the best post-rebuild public score of 0.879. Our previous bes
 | 2026-09-25 09:44 | **G1** `G1_tvsmooth.zip` | E1 + TV smoothing of the density inside runs of target cells (5.1M state rows, mean \|Δv\| 0.0066 km/h, \|Δq\| 11 veh/h) | **0.86651** | 9/140 post-rebuild | **+0.00060, exactly the local J prediction (+0.00062).** Base → G1 |
 | 2026-09-25 10:25 | **G2** `G2_onset_v8stack.zip` | G1 with onset = v8 `seeds9_stack03` (stage-2 stacking 0.3 + 9-seed stage 1; 15 onset cells, 11 in 4 validation windows) | **0.86711** | – | **+0.00060** → March onset about +0.004 (CV +0.0035 hybrid / +0.0024 old). Base → G2 |
 | 2026-09-25 10:16 | **G3** `G3_ongoing_stack.zip` | G2 with ongoing = v9 stage-2 stacking (217 ongoing cells, 139 in validation) | 0.86361 | – | **−0.00350 → March ongoing −0.023**, against CV +0.0065 ± 0.0009. Failed transfer; base stays G2 |
+| 2026-09-26 00:09 | **H2** `H2_t1ens34.zip` | G2 with Task 1 state = mean of full3 and full4 (seed ensemble; state rows only) | **0.86777** | 10/151 post-rebuild | **+0.00066** (local J +0.00077). Base → H2 |
+| 2026-09-26 00:11 | H1b `H1b_og_shrink_on_ens34.zip` | H2 with ongoing v10 (stage 2 may only remove v5 cells where recurrence ≥ 0.05; 77 cells) | 0.86629 | – | **−0.00148** → March ongoing −0.010. It passed the new Task 2 gate (plain +0.0029, both weighted CVs +, footprint clean) and still failed. **Ongoing stacking line dropped** |
+| 2026-09-26 00:16 | P5 probe `P5_smooth_f3.zip` | H2 with TV smoothing ×3 | 0.86736 | – | −0.00041 (local −0.00062) → the official Task 3 truth behaves like the train truth; the smoothing strength is at or near its optimum |
+| 2026-09-26 00:20 | P6 probe `P6_H2_queue_zeroed.zip` | H2 with the queue zeroed | 0.63144 | – | **S_queue(H2) = 0.7878** exactly: onset 0.732, ongoing 0.843. Task 1+3 = 0.43268 |
 
 ### Decomposition of A (0.85204), exact from the probes
 | Task | Weighted | Task score | Local estimate |
@@ -272,3 +276,18 @@ Only the within-run transitions (about 29% of the loss) can be smoothed. **LB: G
 - **Task 2 onset.** Transfers roughly as predicted.
 - **Task 2 ongoing.** Gains that exist only on train months don't transfer. On March the stack extended growing queues on D7_I10_E and reshuffled small queues.
 - **Next step.** Make the Task 2 gate shift-aware: importance-weighted CV toward the validation and private window distributions, checked against today's four LB outcomes before it is trusted.
+
+## 2026-09-26 chain: G2 0.86711 → H2 0.86777
+**Exact decomposition of H2 (0.86777), from P6 and P1:**
+
+| Task | Weighted | Task score |
+|---|---|---|
+| ODME | 0.19876 | 0.994 |
+| Task 1+3 | 0.43268 | S_state ≈ 0.94, S_phys ≈ 0.69 (S_LWR ≈ 0.55) |
+| queue | 0.23633 | S_queue 0.7878: onset 0.732 (P4 + G2 Δ), ongoing 0.843 |
+
+**Lessons**
+- **Task 1/3.** Local J keeps predicting the LB to within 0.0002: H2 +0.00066 vs +0.00077; P5 −0.00041 vs −0.00062.
+- **Ongoing.** Stage-2 re-scoring hurts March even when it may only remove cells (H1b −0.010) or passes the shift-weighted CV and footprint checks. The March ongoing level (0.843) matches the validation-weighted CV (0.849), but no train-based evaluation predicts the *direction* of ongoing edits. From now on, ongoing changes are LB probes first.
+- **Leaderboard.** KTK 0.90033 (+0.012 on 25 Sep), gichang 0.89173, Inocchi 0.88635. We are 10th of 151 post-rebuild, gap 0.0326.
+  - Where a 0.033 gap could come from: +0.1 S_queue = +0.030; +0.1 S_LWR = +0.010 (ceiling 0.955 against our ~0.55).

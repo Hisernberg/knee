@@ -16,6 +16,7 @@
 | s12 | 2026-09-26 | s12_r34full2.csv | r34 4000 steps + r34 filter thr 0.40 + 2048 threshold x1.2 | 0.418 @2048 | **0.37** |
 | s13 | 2026-09-26 | s13_3long.csv | mean(r18 4500, r34 2500, r34 4000) + ensemble filter thr 0.35 | n/a | **0.37** |
 | s14 | 2026-09-26 | s14_fuse_yolo.csv | s11 ensemble fused with YOLO11m-seg @1536 (GPU, full data): keep U-Net score>0.5, or >0.3 if YOLO agrees (IoU>0.3); add non-overlapping YOLO conf>=0.7 | f0: 0.4346 vs U-Net-only 0.4334 (YOLO alone 0.410) | 0.37 |
+| s15 | 2026-09-26 | final5.csv | mean(r18 4500, r34 2500, r34 folds f0-f3 1500) + ensemble filter thr 0.30 | n/a | 0.36 |
 
 Takeaways from day 1:
 - The LB shows only 2 decimals.
@@ -33,3 +34,4 @@ Day 2:
 - Day-2 end: plateau at 0.35. The r34 encoder alone is not better than r18 (0.34), and the r34+r18 ensemble ties at 0.35. On OOF, FN dominates (TP 3091 / FP 1418 / FN 2531 at thr 0.40).
 - Next levers: 4500-step r18 (ch-unet-r18-full-s5, running), a 2048 crop refiner for SQ, YOLO11-seg on GPU after the Saturday quota reset, and fusing U-Net and YOLO instances.
 - 2026-09-26: +0.02 LB from longer training (4000–4500 steps), a filter retrained on 5-fold / 586-image OOF with richer features, and a stricter 2048 upsample threshold. GPU quota is back: YOLO11m-seg kernels ch-yolo-f0 (fold-0 OOF for tuning) and ch-yolo-full are training.
+- 2026-09-26 end: best 0.37 (s11-s14). The 6-model ensemble with weaker fold models is worse (0.36). The GPU U-Net run was CPU-bound (7.5 s/step at 512 crops) and was cancelled at step 2400. Next time, add DataLoader workers and GPU-side augmentation before using GPU for the U-Net.

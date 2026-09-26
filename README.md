@@ -9,7 +9,6 @@ competition live only inside its folder; nothing is shared across folders.
 | [`umud/`](umud/README.md) | [UMUD Challenge: Muscle Architecture in Ultrasound Data](https://www.kaggle.com/competitions/umud-challenge-muscle-architecture-in-ultrasound-data) | `umud` (results: [`umud/RESULTS.md`](umud/RESULTS.md)) |
 | `trafficflow/` | traffic-flow forecasting competition | `trafficflow` |
 | [`cobalt_heron/`](cobalt_heron/README.md) | filament-segmentation-2026 | `ch` |
-| [`red_tape_raccoon/`](red_tape_raccoon/README.md) | chi-bench (IEEE Big Data Cup 2026) | red_tape_raccoon |
 
 Rules: never commit `kaggle.json`, API keys or competition data; Kaggle kernels are prefixed by their
 project (`umud-*`, `rsna-knee-*`, `ch-*`, `tfb-*`) so account-level kernel lists stay separable.

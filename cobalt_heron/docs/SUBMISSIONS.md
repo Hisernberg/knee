@@ -15,6 +15,7 @@
 | s11 | 2026-09-26 | s11_r18s5_r34f2.csv | mean(r18 4500 steps, r34 4000 steps) + ensemble-calibrated filter (586-img OOF) thr 0.35 + 2048 threshold x1.2 | 0.417 @2048 (fold-model analogue) | **0.37** |
 | s12 | 2026-09-26 | s12_r34full2.csv | r34 4000 steps + r34 filter thr 0.40 + 2048 threshold x1.2 | 0.418 @2048 | **0.37** |
 | s13 | 2026-09-26 | s13_3long.csv | mean(r18 4500, r34 2500, r34 4000) + ensemble filter thr 0.35 | n/a | **0.37** |
+| s14 | 2026-09-26 | s14_fuse_yolo.csv | s11 ensemble fused with YOLO11m-seg @1536 (GPU, full data): keep U-Net score>0.5, or >0.3 if YOLO agrees (IoU>0.3); add non-overlapping YOLO conf>=0.7 | f0: 0.4346 vs U-Net-only 0.4334 (YOLO alone 0.410) | 0.37 |
 
 Takeaways from day 1:
 - The LB shows only 2 decimals.

@@ -12,6 +12,9 @@
 | s08 | 2026-09-23 | s08_k18full_filtcomb.csv | s06 model + filter retrained on fold-0 + fold-2 OOF (316 imgs), thr 0.40 | 0.413 @1024 (2-fold) | 0.35 |
 | s09 | 2026-09-23 | s09_r34full.csv | r34 full-data 2500 steps + filter retrained on 3-fold OOF (466 imgs) thr 0.40 | 0.411 @1024 (3-fold, r18 OOF) | 0.34 |
 | s10 | 2026-09-23 | s10_r34_r18full.csv | mean(r34 full 2500, r18 full 3000) + filter thr 0.35 | n/a | 0.35 |
+| s11 | 2026-09-26 | s11_r18s5_r34f2.csv | mean(r18 4500 steps, r34 4000 steps) + ensemble-calibrated filter (586-img OOF) thr 0.35 + 2048 threshold x1.2 | 0.417 @2048 (fold-model analogue) | **0.37** |
+| s12 | 2026-09-26 | s12_r34full2.csv | r34 4000 steps + r34 filter thr 0.40 + 2048 threshold x1.2 | 0.418 @2048 | **0.37** |
+| s13 | 2026-09-26 | s13_3long.csv | mean(r18 4500, r34 2500, r34 4000) + ensemble filter thr 0.35 | n/a | **0.37** |
 
 Takeaways from day 1:
 - The LB shows only 2 decimals.
@@ -28,3 +31,4 @@ Day 2:
 - Local long runs die when the container restarts while idle, so all training now runs on Kaggle CPU kernels.
 - Day-2 end: plateau at 0.35. The r34 encoder alone is not better than r18 (0.34), and the r34+r18 ensemble ties at 0.35. On OOF, FN dominates (TP 3091 / FP 1418 / FN 2531 at thr 0.40).
 - Next levers: 4500-step r18 (ch-unet-r18-full-s5, running), a 2048 crop refiner for SQ, YOLO11-seg on GPU after the Saturday quota reset, and fusing U-Net and YOLO instances.
+- 2026-09-26: +0.02 LB from longer training (4000–4500 steps), a filter retrained on 5-fold / 586-image OOF with richer features, and a stricter 2048 upsample threshold. GPU quota is back: YOLO11m-seg kernels ch-yolo-f0 (fold-0 OOF for tuning) and ch-yolo-full are training.

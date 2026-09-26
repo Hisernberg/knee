@@ -118,3 +118,14 @@ S2b MT 0.9, S3 FL clip 15 mm, S4 PA offset 0.8, and F (old pipeline with only th
 
 Reproduce S2: `python scripts/blend_v2.py --ref vera.csv --groups test_groups.npy --pipeline submissions/s17_Ahyb_pipeline.csv
 --features features_hyb.csv --w 0.56 0.27 1.0 --clip-mt 4 --out S2.csv`.
+
+## Day 5 (2026-09-26)
+| Shot | Change vs S2 | Public LB |
+|---|---|---|
+| d5 S1 | PA offset 2.4 | 0.32180 (flat; PA-offset optimum ≈ 2.0 by quadratic fit) |
+| d5 S2 | PA 2.0 + FL tail weight 0.6 beyond 15 mm | 0.32533 (a single linear FL weight 0.27 is optimal; clipping and tail-boosting both hurt) |
+| d5 S3 | PA 2.0 + MT +0.3 mm | 0.33771 |
+| d5 S4 | PA 2.0 + MT −0.35 mm | 0.33599 (MT has a sharp minimum at 0: no bias; many MT predictions already very close) |
+| **d5 S5** | **PA 2.0 + clip smoothing 0.8 (was 0.6)** | **0.31995 (rank 5, 0.001 behind 4th)** |
+
+Reproduce: `blend_v2.py ... --w 0.56 0.27 1.0 --clip-mt 4 --pa-offset 2.0 --alpha 0.8`. Next: alpha 1.0 (full clip median).
